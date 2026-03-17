@@ -2,6 +2,10 @@
 
 适用场景：日常提交、更新已有 PR（推送到 PR 分支会自动更新）
 
+Remote 说明：
+- `origin`   = 自己的 fork（fansanqiu/eagle-twitter-video-downloader）← 推送目标
+- `upstream` = 原始仓库（OlivierEstevez/eagle-twitter-video-downloader）← 只拉取，不推送
+
 步骤：
 
 1. **检查改动**：
@@ -9,15 +13,14 @@
    git status && git diff HEAD
    ```
 
-2. **代码检查**（必须）：
+2. **构建检查**（必须）：
    ```bash
-   pnpm check:fix  # 自动修复格式问题
-   pnpm check      # 确保无错误
+   npm run build  # 确保构建无报错
    ```
 
 3. **暂存并提交**：
    ```bash
-   git add .
+   git add Plugin/ js/
    git commit -m "🤖 Auto：<改动概述>
 
    <详细说明，每类一行>
@@ -31,9 +34,9 @@
    🧼 Chore：构建维护"
    ```
 
-4. **推送**：
+4. **推送到自己的 fork**：
    ```bash
-   git push
+   git push origin $(git branch --show-current)
    ```
 
-注：创建新 PR 请使用 `scripts/git-pr.md`
+注：创建新 PR 请使用 `docs/git-pr.md`

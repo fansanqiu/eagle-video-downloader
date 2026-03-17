@@ -26,7 +26,22 @@
     "complete": "Initialization complete!",
     "failed": "Initialization failed",
     "hint": "First-time setup requires downloading components, please wait...",
-    "networkError": "Initialization failed. Please check your network connection."
+    "networkError": "Initialization failed. Please check your network connection.",
+    "title": "First-time setup requires downloading components",
+    "componentYtdlp": "yt-dlp (video extraction engine)",
+    "componentFfmpeg": "ffmpeg (video transcoding tool)",
+    "startDownload": "Download Components",
+    "downloadingComponent": "Downloading {{name}}..."
+  },
+  "queue": {
+    "waiting": "Waiting...",
+    "preparing": "Fetching video info...",
+    "downloading": "Downloading",
+    "completed": "Completed",
+    "error": "Download failed",
+    "retry": "Retry",
+    "copyUrl": "Copy URL",
+    "copied": "Copied!"
   },
   "download": {
     "fetchingInfo": "Fetching video information...",

@@ -1,10 +1,9 @@
 /**
  * Eagle 视频下载插件
- * 主入口 - 处理插件初始化和单下载管理
+ * 主入口 - 处理插件初始化和下载队列管理
  */
 
-// 导入模块
-const { getFfmpegPath, isYtDlpInstalled, isFfmpegInstalled, downloadYtDlp, downloadFfmpeg } = require("./binary");
+const { isYtDlpInstalled, isFfmpegInstalled, downloadYtDlp, downloadFfmpeg } = require("./binary");
 const downloader = require("./downloader");
 const eagleApi = require("./eagle");
 const ui = require("./ui");
@@ -12,8 +11,11 @@ const ui = require("./ui");
 // 状态管理
 let isInitialized = false;
 
-// 当前下载状态
-let currentDownload = null;
+// 下载队列
+const downloadQueue = [];
+const MAX_CONCURRENT = 3;
+let activeCount = 0;
+let queueIdCounter = 0;
 
 /**
  * 初始化 i18next
@@ -39,32 +41,30 @@ function applyTranslations() {
   const appName = document.getElementById("appName");
   if (appName) appName.textContent = i18next.t("ui.appTitle");
 
-  const videoUrl = document.getElementById("urlInput");
-  if (videoUrl) videoUrl.placeholder = i18next.t("ui.inputPlaceholder");
+  const urlInput = document.getElementById("urlInput");
+  if (urlInput) urlInput.placeholder = i18next.t("ui.inputPlaceholder");
 
+  const initTitle = document.getElementById("initTitle");
+  if (initTitle) initTitle.textContent = i18next.t("init.title");
 
+  const initComponentYtdlp = document.getElementById("initComponentYtdlp");
+  if (initComponentYtdlp) initComponentYtdlp.textContent = i18next.t("init.componentYtdlp");
 
-  const initHint = document.querySelector(".init-hint");
-  if (initHint) initHint.textContent = i18next.t("init.hint");
+  const initComponentFfmpeg = document.getElementById("initComponentFfmpeg");
+  if (initComponentFfmpeg) initComponentFfmpeg.textContent = i18next.t("init.componentFfmpeg");
+
+  const initStartBtn = document.getElementById("initStartBtn");
+  if (initStartBtn) initStartBtn.textContent = i18next.t("init.startDownload");
 }
 
 /**
  * 初始化插件
  */
 eagle.onPluginCreate(async (plugin) => {
-  // 初始化 i18next
   await initI18n();
-
-  // 应用翻译到 UI
   applyTranslations();
-
-  // 更新主题
   ui.updateTheme();
-
-  // 设置事件监听器
   setupEventListeners();
-
-  // 检查并初始化二进制文件
   await initializeBinaries();
 });
 
@@ -79,26 +79,26 @@ eagle.onThemeChanged(() => {
  * 设置 UI 事件监听器
  */
 function setupEventListeners() {
-  // 关闭按钮
   document.getElementById("closeButton").addEventListener("click", () => {
     window.close();
   });
 
-  // 监听下载事件
+  document.getElementById("initStartBtn").addEventListener("click", () => {
+    document.dispatchEvent(new CustomEvent("confirmInit"));
+  });
+
   document.addEventListener("startDownload", (e) => {
-    handleDownload(e.detail.url);
+    addToQueue(e.detail.url);
   });
 
-  // 监听取消事件
-  document.addEventListener("cancelDownload", () => {
-    cancelCurrentDownload();
-  });
-
-  // 监听重试事件
-  document.addEventListener("retryDownload", () => {
-    if (currentDownload && currentDownload.url) {
-      handleDownload(currentDownload.url);
-    }
+  // 下载列表事件委托（重试、复制链接）
+  document.querySelector(".download-list").addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-action]");
+    if (!btn) return;
+    const action = btn.dataset.action;
+    const id = parseInt(btn.dataset.id);
+    if (action === "retry") retryDownload(id);
+    if (action === "copy") copyUrl(id);
   });
 }
 
@@ -109,11 +109,17 @@ async function initializeBinaries() {
   if (isYtDlpInstalled() && isFfmpegInstalled()) {
     isInitialized = true;
     initializeMainUI();
-    ui.showMainUI();
     return;
   }
 
-  ui.showInitUI();
+  // 显示确认界面，等待用户点击
+  ui.showInitConfirm();
+  await new Promise((resolve) => {
+    document.addEventListener("confirmInit", resolve, { once: true });
+  });
+
+  // 用户确认，开始下载
+  ui.showInitDownloading();
 
   try {
     if (!isYtDlpInstalled()) {
@@ -131,13 +137,10 @@ async function initializeBinaries() {
     }
 
     ui.updateInitStatus(i18next.t("init.complete"), 100);
-
-    // 短暂延迟显示完成状态
     await new Promise((resolve) => setTimeout(resolve, 500));
 
     isInitialized = true;
     initializeMainUI();
-    ui.showMainUI();
   } catch (error) {
     ui.updateInitStatus(`${i18next.t("init.failed")}: ${error.message}`, 0);
   }
@@ -147,121 +150,114 @@ async function initializeBinaries() {
  * 初始化主 UI
  */
 function initializeMainUI() {
-  // 设置输入栏
+  ui.showMainUI();
   ui.setupInputBar();
-
-  // 聚焦输入框
   const urlInput = document.getElementById("urlInput");
-  if (urlInput) {
-    urlInput.focus();
-  }
+  if (urlInput) urlInput.focus();
 }
 
 /**
- * 处理下载请求
+ * 添加下载任务到队列
  */
-async function handleDownload(url) {
-  if (!isInitialized) {
-    ui.setInputBarState("error", i18next.t("error.notInitialized"));
-    return;
-  }
+function addToQueue(url) {
+  if (!isInitialized) return;
 
-  if (!ui.isValidUrl(url)) {
-    ui.setInputBarState("error", i18next.t("error.invalidUrl"));
-    return;
-  }
-
-  // 如果有正在进行的下载，不处理新请求
-  if (currentDownload && (currentDownload.state === "preparing" || currentDownload.state === "downloading")) {
-    return;
-  }
-
-  // 初始化下载状态
-  currentDownload = {
-    url: url,
-    title: i18next.t("ui.loading"),
-    source: "",
-    format: "",
-    resolution: "",
-    state: "preparing",
+  const item = {
+    id: ++queueIdCounter,
+    url,
+    title: url,
+    state: "waiting",
     progress: 0,
+    speed: "",
     error: null,
   };
 
-  // 设置输入栏为准备状态
-  ui.setInputBarState("preparing");
+  downloadQueue.push(item);
+  ui.appendQueueItem(item);
+  processQueue();
+}
 
-  try {
-    // 获取视频元数据
-    const videoInfo = await downloader.getVideoInfo(url);
-
-    // 更新项目元数据
-    currentDownload.title = videoInfo.title || i18next.t("error.untitledVideo");
-    currentDownload.source = videoInfo.extractor || i18next.t("error.unknown");
-    currentDownload.format = "MP4";
-    currentDownload.resolution = "1080p";
-    currentDownload.state = "downloading";
-
-    // 设置输入栏为下载状态
-    ui.setInputBarState("downloading");
-
-    // 开始下载（传入已获取的 videoInfo，避免重复请求）
-    const results = await downloader.downloadVideo(
-      url,
-      (progress) => {
-        if (currentDownload && currentDownload.state === "downloading") {
-          currentDownload.progress = progress.percent || 0;
-        }
-      },
-      null, // 不需要状态回调，已在 UI 中处理
-      videoInfo // 传入预获取的视频信息
-    );
-
-    // 下载完成
-    currentDownload.state = "completed";
-    currentDownload.progress = 100;
-
-    // 设置输入栏为完成状态
-    ui.setInputBarState("completed");
-
-    // 清空输入栏内容
-    ui.clearInputBar();
-
-    // 导入所有视频到 Eagle
-    try {
-      // results 现在是一个数组，可能包含多个视频
-      for (const result of results) {
-        await eagleApi.importToEagle(result.path, result.metadata, url);
-        // 清理临时文件
-        downloader.cleanup(result.path);
-      }
-    } catch (error) {
-      console.error("Eagle import error:", error);
-    }
-
-  } catch (error) {
-    // 下载失败
-    if (currentDownload) {
-      currentDownload.state = "error";
-      currentDownload.error = error.message || i18next.t("download.failed");
-      // 设置输入栏为错误状态
-      ui.setInputBarState("error", currentDownload.error);
-    }
+/**
+ * 处理队列，启动等待中的任务（最多 MAX_CONCURRENT 个并发）
+ */
+function processQueue() {
+  while (activeCount < MAX_CONCURRENT) {
+    const nextItem = downloadQueue.find((item) => item.state === "waiting");
+    if (!nextItem) break;
+    activeCount++;
+    executeDownload(nextItem);
   }
 }
 
 /**
- * 取消当前下载
+ * 执行单个下载任务
  */
-function cancelCurrentDownload() {
-  if (!currentDownload) return;
+async function executeDownload(item) {
+  try {
+    item.state = "preparing";
+    ui.updateQueueItem(item.id, item);
 
-  if (currentDownload.state !== "preparing" && currentDownload.state !== "downloading") {
-    return;
+    const videoInfo = await downloader.getVideoInfo(item.url);
+    item.title = videoInfo.title || i18next.t("error.untitledVideo");
+    item.state = "downloading";
+    ui.updateQueueItem(item.id, item);
+
+    const results = await downloader.downloadVideo(
+      item.url,
+      (progress) => {
+        item.progress = progress.percent || 0;
+        item.speed = progress.currentSpeed || "";
+        ui.updateQueueItem(item.id, item);
+      },
+      null,
+      videoInfo
+    );
+
+    item.state = "completed";
+    item.progress = 100;
+    item.speed = "";
+    ui.updateQueueItem(item.id, item);
+
+    for (const result of results) {
+      await eagleApi.importToEagle(result.path, result.metadata, item.url);
+      downloader.cleanup(result.path);
+    }
+  } catch (error) {
+    item.state = "error";
+    item.error = error.message || i18next.t("download.failed");
+    ui.updateQueueItem(item.id, item);
+  } finally {
+    activeCount--;
+    processQueue();
   }
+}
 
-  // TODO: 实现取消 yt-dlp 进程的逻辑
+/**
+ * 重试失败的下载任务
+ */
+function retryDownload(id) {
+  const item = downloadQueue.find((item) => item.id === id);
+  if (!item || item.state !== "error") return;
 
-  // 重置状态
-  currentDownload = null;
+  item.state = "waiting";
+  item.progress = 0;
+  item.error = null;
+  item.speed = "";
+  ui.updateQueueItem(item.id, item);
+  processQueue();
+}
+
+/**
+ * 复制下载任务的 URL
+ */
+async function copyUrl(id) {
+  const item = downloadQueue.find((item) => item.id === id);
+  if (!item) return;
+
+  try {
+    await navigator.clipboard.writeText(item.url);
+    ui.showCopiedFeedback(id);
+  } catch (error) {
+    console.error("Failed to copy URL:", error);
+  }
 }

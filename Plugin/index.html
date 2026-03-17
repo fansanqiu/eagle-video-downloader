@@ -49,6 +49,7 @@
       align-items: center;
       padding: 12px;
       user-select: none;
+      flex-shrink: 0;
     }
 
     .draggable {
@@ -88,45 +89,116 @@
       opacity: 0.7;
     }
 
-    /* Main Content */
+    /* Main */
     main {
       flex: 1;
       display: flex;
       flex-direction: column;
+      min-height: 0;
       overflow: visible;
       position: relative;
     }
 
-    /* Init Section */
-    .init-section {
-      text-align: center;
-      padding: 20px;
+    /* === Init Container === */
+    #initContainer {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 16px 20px;
+      gap: 0;
     }
 
-    .init-message {
-      font-size: 14px;
-      margin-bottom: 12px;
+    #initConfirm {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
     }
 
-    .init-hint {
-      font-size: 11px;
+    .init-title {
+      font-size: 13px;
+      font-weight: 500;
+      line-height: 1.4;
+      color: var(--fg1);
+    }
+
+    .init-components {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .init-components li {
+      font-size: 12px;
       color: var(--fg2);
-      margin-top: 12px;
+      padding-left: 14px;
+      position: relative;
+    }
+
+    .init-components li::before {
+      content: '•';
+      position: absolute;
+      left: 0;
+      color: var(--brand);
+    }
+
+    .btn-primary {
+      background: var(--brand);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 16px;
+      font-size: 13px;
+      cursor: pointer;
+      width: 100%;
+      margin-top: 4px;
+    }
+
+    .btn-primary:hover {
+      opacity: 0.9;
+    }
+
+    .btn-primary:active {
+      opacity: 0.8;
+    }
+
+    #initProgress {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    #initMessage {
+      font-size: 12px;
+      color: var(--fg2);
     }
 
     .init-progress-bar {
-      height: 8px;
+      height: 6px;
       background: rgba(255, 255, 255, 0.1);
-      border-radius: 4px;
+      border-radius: 3px;
       overflow: hidden;
     }
 
     .init-progress-fill {
       height: 100%;
       background: linear-gradient(90deg, var(--brand), var(--success));
-      border-radius: 4px;
+      border-radius: 3px;
       transition: width 0.3s ease;
       width: 0%;
+    }
+
+    #initPercent {
+      font-size: 10px;
+      color: var(--fg2);
+    }
+
+    /* === Main Container === */
+    #mainContainer {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
     }
 
     /* Input Bar */
@@ -135,9 +207,8 @@
       gap: 12px;
       padding: 0 12px 12px;
       align-items: center;
-      background: var(--bg1);
       flex-shrink: 0;
-      overflow: visible;
+      position: relative;
       z-index: 10;
     }
 
@@ -179,13 +250,11 @@
       opacity: 0.5;
     }
 
-    /* Button disabled state */
     #addButton.disabled {
       opacity: 0.2;
       pointer-events: none;
     }
 
-    /* Error state with tooltip */
     #addButton.error {
       opacity: 1;
     }
@@ -196,14 +265,10 @@
       right: 0;
       background: var(--bg3);
       color: var(--fg1);
-      padding: 2px 4px;
+      padding: 2px 6px;
       border-radius: 4px;
       font-size: 10px;
-      line-height: 14px;
-      max-width: 240px;
       white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
       opacity: 0;
       pointer-events: none;
       transition: opacity 0.2s;
@@ -213,49 +278,104 @@
       opacity: 1;
     }
 
-    /* Loading animation */
-    @keyframes spin {
-      from {
-        transform: rotate(0deg);
-      }
-
-      to {
-        transform: rotate(360deg);
-      }
-    }
-
-    #addButton.loading img {
-      animation: spin 1s linear infinite;
-    }
-
-    /* Input disabled state */
-    #urlInput:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
-    /* Success state */
-    .input-bar.success #urlInput {
-      display: none;
-    }
-
-    .success-message {
+    /* Download List */
+    .download-list {
       flex: 1;
-      height: 32px;
+      overflow-y: auto;
+      min-height: 0;
       display: flex;
-      align-items: center;
-      justify-content: center;
+      flex-direction: column;
       gap: 8px;
-      padding: 0 12px;
+      padding: 0 12px 12px;
+    }
+
+    .download-list::-webkit-scrollbar {
+      width: 3px;
+    }
+
+    .download-list::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .download-list::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 2px;
+    }
+
+    /* Download Item */
+    .download-item {
       background: var(--bg2);
       border-radius: 8px;
-      font-size: 12px;
-      color: var(--success);
+      padding: 8px 12px;
+      flex-shrink: 0;
     }
 
-    .success-message img {
-      width: 16px;
-      height: 16px;
+    .item-title {
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-bottom: 6px;
+    }
+
+    .item-progress-bar {
+      height: 4px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-bottom: 4px;
+    }
+
+    .item-progress-fill {
+      height: 100%;
+      background: var(--brand);
+      border-radius: 2px;
+      transition: width 0.2s ease;
+    }
+
+    .download-item.completed .item-progress-fill {
+      background: var(--success);
+    }
+
+    .download-item.error .item-progress-fill {
+      background: var(--error);
+    }
+
+    .item-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      min-height: 16px;
+    }
+
+    .item-meta {
+      font-size: 10px;
+      color: var(--fg2);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .item-actions {
+      display: flex;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+
+    .item-action-btn {
+      background: rgba(255, 255, 255, 0.1);
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      padding: 2px 6px;
+      color: var(--fg2);
+      font-size: 10px;
+      line-height: 16px;
+    }
+
+    .item-action-btn:hover {
+      background: rgba(255, 255, 255, 0.2);
+      color: var(--fg1);
     }
 
     /* Utilities */
@@ -281,27 +401,37 @@
 
     <!-- Main Content -->
     <main>
-      <!-- Initialization UI -->
+      <!-- Init Container -->
       <div id="initContainer" class="hidden">
-        <div class="init-section">
-          <p id="initMessage" class="init-message"></p>
+        <!-- Confirm State -->
+        <div id="initConfirm">
+          <p id="initTitle" class="init-title"></p>
+          <ul class="init-components">
+            <li id="initComponentYtdlp"></li>
+            <li id="initComponentFfmpeg"></li>
+          </ul>
+          <button id="initStartBtn" class="btn-primary no-drag"></button>
+        </div>
+        <!-- Progress State -->
+        <div id="initProgress" class="hidden">
+          <p id="initMessage"></p>
           <div class="init-progress-bar">
             <div id="initProgressFill" class="init-progress-fill"></div>
           </div>
-          <p class="init-hint"></p>
+          <p id="initPercent"></p>
         </div>
       </div>
 
-      <!-- Input Bar -->
-      <div class="input-bar">
-        <input type="text" id="urlInput" placeholder="" />
-        <div class="success-message hidden">
-          <img src="assets/icon_success.svg" alt="Success" />
-          <span id="successText"></span>
+      <!-- Main Container -->
+      <div id="mainContainer" class="hidden">
+        <div class="input-bar">
+          <input type="text" id="urlInput" placeholder="" />
+          <button id="addButton" class="no-drag">
+            <img src="assets/icon_download.svg" width="16" height="16" alt="Add" />
+            <span class="error-tooltip"></span>
+          </button>
         </div>
-        <button id="addButton">
-          <img src="assets/icon_download.svg" width="16" height="16" alt="Download" />
-        </button>
+        <div class="download-list"></div>
       </div>
     </main>
   </div>

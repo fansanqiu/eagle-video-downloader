@@ -3,7 +3,6 @@
  * 处理用户界面交互
  */
 
-
 /**
  * 更新 UI 主题
  */
@@ -29,36 +28,42 @@ function updateTheme() {
 }
 
 /**
- * 显示初始化 UI
+ * 显示初始化确认界面
  */
-function showInitUI() {
-  const initContainer = document.getElementById("initContainer");
-  const mainContainer = document.getElementById("mainContainer");
+function showInitConfirm() {
+  document.getElementById("initContainer")?.classList.remove("hidden");
+  document.getElementById("initConfirm")?.classList.remove("hidden");
+  document.getElementById("initProgress")?.classList.add("hidden");
+  document.getElementById("mainContainer")?.classList.add("hidden");
+}
 
-  if (initContainer) initContainer.classList.remove("hidden");
-  if (mainContainer) mainContainer.classList.add("hidden");
+/**
+ * 切换到下载进度界面
+ */
+function showInitDownloading() {
+  document.getElementById("initConfirm")?.classList.add("hidden");
+  document.getElementById("initProgress")?.classList.remove("hidden");
 }
 
 /**
  * 显示主 UI
  */
 function showMainUI() {
-  const initContainer = document.getElementById("initContainer");
-  const mainContainer = document.getElementById("mainContainer");
-
-  if (initContainer) initContainer.classList.add("hidden");
-  if (mainContainer) mainContainer.classList.remove("hidden");
+  document.getElementById("initContainer")?.classList.add("hidden");
+  document.getElementById("mainContainer")?.classList.remove("hidden");
 }
 
 /**
- * 更新初始化状态显示
+ * 更新初始化进度显示
  */
 function updateInitStatus(message, progress) {
   const initMessage = document.getElementById("initMessage");
   const initProgressFill = document.getElementById("initProgressFill");
+  const initPercent = document.getElementById("initPercent");
 
   if (initMessage) initMessage.textContent = message;
   if (initProgressFill) initProgressFill.style.width = `${progress}%`;
+  if (initPercent) initPercent.textContent = `${Math.round(progress)}%`;
 }
 
 /**
@@ -74,7 +79,7 @@ function isValidUrl(string) {
 }
 
 /**
- * 设置输入栏
+ * 设置输入栏事件
  */
 function setupInputBar() {
   const urlInput = document.getElementById("urlInput");
@@ -82,30 +87,15 @@ function setupInputBar() {
 
   if (!urlInput || !addButton) return;
 
-  // 更新按钮状态的辅助函数
-  const updateButtonState = () => {
-    const hasContent = urlInput.value.trim().length > 0;
-    if (hasContent) {
-      addButton.classList.remove("disabled");
-    } else {
-      addButton.classList.add("disabled");
-    }
-  };
-
-  // 初始状态：禁用按钮
   addButton.classList.add("disabled");
 
-  // 监听输入变化
   urlInput.addEventListener("input", () => {
-    resetInputBar();
-    updateButtonState();
+    setInputBarState("idle");
+    addButton.classList.toggle("disabled", urlInput.value.trim().length === 0);
   });
 
-  // 处理提交
   const handleSubmit = () => {
     const url = urlInput.value.trim();
-
-    // 无内容时不处理（按钮已禁用，但防止回车触发）
     if (!url) return;
 
     if (!isValidUrl(url)) {
@@ -113,129 +103,152 @@ function setupInputBar() {
       return;
     }
 
-    // 触发下载事件
-    const event = new CustomEvent("startDownload", { detail: { url } });
-    document.dispatchEvent(event);
+    document.dispatchEvent(new CustomEvent("startDownload", { detail: { url } }));
+    urlInput.value = "";
+    addButton.classList.add("disabled");
+    setInputBarState("idle");
   };
 
-  // 按钮点击
   addButton.addEventListener("click", handleSubmit);
 
-  // 回车键
   urlInput.addEventListener("keypress", (e) => {
-    if (e.key === "Enter") {
-      handleSubmit();
-    }
+    if (e.key === "Enter") handleSubmit();
   });
 }
 
 /**
- * 清空输入栏内容（不重置状态）
- */
-function clearInputBar() {
-  const urlInput = document.getElementById("urlInput");
-  if (urlInput) {
-    urlInput.value = "";
-  }
-}
-
-/**
- * 设置输入栏状态
- * @param {string} state - 'idle' | 'preparing' | 'downloading' | 'completed' | 'error'
- * @param {string} errorMessage - 错误信息（仅 error 状态使用）
+ * 设置输入栏状态（idle / error）
  */
 function setInputBarState(state, errorMessage = "") {
-  const inputBar = document.querySelector(".input-bar");
-  const urlInput = document.getElementById("urlInput");
   const addButton = document.getElementById("addButton");
   const buttonImg = addButton?.querySelector("img");
-  const successMessage = document.querySelector(".success-message");
-  const successText = document.getElementById("successText");
+  const tooltip = addButton?.querySelector(".error-tooltip");
 
-  // 移除所有状态
-  addButton?.classList.remove("disabled", "error", "loading");
-  inputBar?.classList.remove("success");
-  if (urlInput) urlInput.disabled = false;
-  successMessage?.classList.add("hidden");
+  addButton?.classList.remove("error");
+  if (tooltip) tooltip.textContent = "";
+  if (buttonImg) buttonImg.src = "assets/icon_download.svg";
 
-  // 移除错误 tooltip
-  const existingTooltip = addButton?.querySelector(".error-tooltip");
-  if (existingTooltip) existingTooltip.remove();
-
-  switch (state) {
-    case "preparing":
-    case "downloading":
-      addButton?.classList.add("disabled", "loading");
-      if (buttonImg) buttonImg.src = "assets/icon_loading.svg";
-      if (urlInput) urlInput.disabled = true;
-      break;
-
-    case "completed":
-      inputBar?.classList.add("success");
-      successMessage?.classList.remove("hidden");
-      if (successText) successText.textContent = i18next.t("ui.successDownload");
-      if (buttonImg) buttonImg.src = "assets/icon_add.svg";
-      // 点击按钮恢复默认状态
-      if (addButton) {
-        addButton.onclick = () => {
-          resetInputBar();
-          addButton.onclick = null; // 恢复后移除这个特殊处理
-        };
-      }
-      break;
-
-    case "error":
-      if (buttonImg) buttonImg.src = "assets/icon_error.svg";
-      addButton?.classList.add("error");
-      // 添加 tooltip
-      if (addButton && errorMessage) {
-        const tooltip = document.createElement("span");
-        tooltip.className = "error-tooltip";
-        tooltip.textContent = errorMessage;
-        addButton.appendChild(tooltip);
-      }
-      break;
-
-    case "idle":
-    default:
-      if (buttonImg) buttonImg.src = "assets/icon_download.svg";
-      break;
+  if (state === "error") {
+    addButton?.classList.add("error");
+    if (tooltip && errorMessage) tooltip.textContent = errorMessage;
+    if (buttonImg) buttonImg.src = "assets/icon_error.svg";
   }
 }
 
 /**
- * 重置输入栏到初始状态
+ * 追加单个队列项到列表末尾
  */
-function resetInputBar() {
-  const urlInput = document.getElementById("urlInput");
-  const addButton = document.getElementById("addButton");
+function appendQueueItem(item) {
+  const list = document.querySelector(".download-list");
+  if (!list) return;
+  list.appendChild(createQueueItemEl(item));
+  // 自动滚动到底部
+  list.scrollTop = list.scrollHeight;
+}
 
-  setInputBarState("idle");
+/**
+ * 创建队列项 DOM 元素
+ */
+function createQueueItemEl(item) {
+  const el = document.createElement("div");
+  el.className = `download-item ${item.state}`;
+  el.dataset.id = item.id;
 
-  // 更新按钮状态
-  if (urlInput && addButton) {
-    const hasContent = urlInput.value.trim().length > 0;
-    if (hasContent) {
-      addButton.classList.remove("disabled");
-    } else {
-      addButton.classList.add("disabled");
-    }
+  el.innerHTML = `
+    <div class="item-title">${escapeHtml(item.title)}</div>
+    <div class="item-progress-bar">
+      <div class="item-progress-fill" style="width: ${item.progress}%"></div>
+    </div>
+    <div class="item-footer">
+      <span class="item-meta">${escapeHtml(getMetaText(item))}</span>
+      <div class="item-actions ${item.state === "error" ? "" : "hidden"}">
+        <button class="item-action-btn" data-action="retry" data-id="${item.id}">${i18next.t("queue.retry")}</button>
+        <button class="item-action-btn" data-action="copy" data-id="${item.id}" id="copy-btn-${item.id}">${i18next.t("queue.copyUrl")}</button>
+      </div>
+    </div>
+  `;
+
+  return el;
+}
+
+/**
+ * 局部更新队列项（避免全量重渲染）
+ */
+function updateQueueItem(id, data) {
+  const el = document.querySelector(`.download-item[data-id="${id}"]`);
+  if (!el) return;
+
+  el.className = `download-item ${data.state}`;
+
+  const titleEl = el.querySelector(".item-title");
+  if (titleEl) titleEl.textContent = data.title;
+
+  const fill = el.querySelector(".item-progress-fill");
+  if (fill) fill.style.width = `${data.progress}%`;
+
+  const meta = el.querySelector(".item-meta");
+  if (meta) meta.textContent = getMetaText(data);
+
+  const actions = el.querySelector(".item-actions");
+  if (actions) actions.classList.toggle("hidden", data.state !== "error");
+}
+
+/**
+ * 显示"已复制"反馈
+ */
+function showCopiedFeedback(id) {
+  const btn = document.getElementById(`copy-btn-${id}`);
+  if (!btn) return;
+  const original = btn.textContent;
+  btn.textContent = i18next.t("queue.copied");
+  setTimeout(() => {
+    btn.textContent = original;
+  }, 1500);
+}
+
+/**
+ * 根据状态生成元信息文本
+ */
+function getMetaText(item) {
+  switch (item.state) {
+    case "waiting":
+      return i18next.t("queue.waiting");
+    case "preparing":
+      return i18next.t("queue.preparing");
+    case "downloading":
+      return item.speed
+        ? `${Math.round(item.progress)}% · ${item.speed}`
+        : `${Math.round(item.progress)}%`;
+    case "completed":
+      return i18next.t("queue.completed");
+    case "error":
+      return item.error || i18next.t("queue.error");
+    default:
+      return "";
   }
+}
 
-  // 聚焦输入框
-  if (urlInput) {
-    urlInput.focus();
-  }
+/**
+ * HTML 转义
+ */
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 module.exports = {
   updateTheme,
-  showInitUI,
+  showInitConfirm,
+  showInitDownloading,
   showMainUI,
   updateInitStatus,
   isValidUrl,
   setupInputBar,
-  clearInputBar,
   setInputBarState,
-  resetInputBar,
+  appendQueueItem,
+  updateQueueItem,
+  showCopiedFeedback,
 };

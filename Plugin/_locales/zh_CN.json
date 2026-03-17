@@ -26,7 +26,22 @@
     "complete": "初始化完成！",
     "failed": "初始化失败",
     "hint": "首次使用需要下载必要组件，请稍候...",
-    "networkError": "初始化失败，请检查网络连接后重试"
+    "networkError": "初始化失败，请检查网络连接后重试",
+    "title": "首次使用需要下载必要组件",
+    "componentYtdlp": "yt-dlp（视频解析引擎）",
+    "componentFfmpeg": "ffmpeg（视频转码工具）",
+    "startDownload": "开始下载组件",
+    "downloadingComponent": "正在下载 {{name}}..."
+  },
+  "queue": {
+    "waiting": "等待中...",
+    "preparing": "获取视频信息...",
+    "downloading": "下载中",
+    "completed": "已完成",
+    "error": "下载失败",
+    "retry": "重试",
+    "copyUrl": "复制链接",
+    "copied": "已复制"
   },
   "download": {
     "fetchingInfo": "正在获取视频信息...",
