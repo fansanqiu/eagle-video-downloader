@@ -62,20 +62,23 @@
 ### 项目结构
 
 ```
-├── index.html           # UI 界面（内嵌 CSS）
 ├── js/
 │   ├── plugin.js        # 主入口文件
 │   ├── ui.js            # UI 管理模块
 │   ├── downloader.js    # 视频下载逻辑
 │   ├── binary.js        # 二进制文件管理（yt-dlp/ffmpeg）
 │   └── eagle.js         # Eagle API 集成
-├── dist/plugin.js       # 打包输出文件（esbuild）
-├── bin/                 # yt-dlp 和 ffmpeg 二进制文件（自动下载）
-├── _locales/            # 国际化文件
-│   ├── en.json          # 英文翻译
-│   └── zh_CN.json       # 中文翻译
-├── assets/              # 图标和资源
-└── manifest.json        # Eagle 插件配置
+├── Plugin/              # 插件打包目录（在 Eagle 中指向此目录）
+│   ├── manifest.json    # Eagle 插件配置
+│   ├── index.html       # UI 界面（内嵌 CSS）
+│   ├── assets/          # 图标和资源
+│   ├── _locales/        # 国际化文件
+│   │   ├── en.json      # 英文翻译
+│   │   └── zh_CN.json   # 中文翻译
+│   ├── dist/plugin.js   # 打包输出文件（esbuild，已 gitignore）
+│   └── bin/             # yt-dlp 和 ffmpeg 二进制文件（自动下载，已 gitignore）
+├── esbuild.config.js
+└── package.json
 ```
 
 ### 开发命令
@@ -94,7 +97,7 @@ npm run dev
 ### 技术栈
 
 - **yt-dlp**：视频下载核心引擎
-- **ffmpeg-static**：音视频合并处理
+- **ffmpeg**：音视频合并处理（运行时自动下载）
 - **esbuild**：快速打包构建
 - **i18next**：国际化支持
 

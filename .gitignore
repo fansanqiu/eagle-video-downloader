@@ -2,10 +2,10 @@
 node_modules/
 
 # Build output
-dist/
+Plugin/dist/
 
 # Binary files (downloaded at runtime)
-bin/
+Plugin/bin/
 
 # OS files
 .DS_Store

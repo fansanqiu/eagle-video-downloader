@@ -8,8 +8,8 @@ const fs = require('fs');
 const os = require('os');
 const https = require('https');
 
-// 插件路径
-const PLUGIN_ROOT = __dirname.replace(/[/\\]js$/, '');
+// 插件路径（__dirname 运行时指向 dist/，向上一级即 Plugin/ 根目录）
+const PLUGIN_ROOT = path.join(__dirname, '..');
 const BIN_DIR = path.join(PLUGIN_ROOT, 'bin');
 
 /**
@@ -37,14 +37,93 @@ function getYtDlpPath() {
 }
 
 /**
- * 获取 ffmpeg-static 中的 ffmpeg 二进制路径
+ * 获取 ffmpeg 本地文件名
+ */
+function getFfmpegBinaryName() {
+    return os.platform() === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
+}
+
+/**
+ * 获取 ffmpeg GitHub release asset 名称
+ */
+function getFfmpegAssetName() {
+    const platform = os.platform();
+    const arch = os.arch();
+    if (platform === 'darwin') {
+        return arch === 'arm64' ? 'ffmpeg-darwin-arm64' : 'ffmpeg-darwin-x64';
+    } else if (platform === 'win32') {
+        return 'ffmpeg-win32-x64.exe';
+    } else {
+        return arch === 'arm64' ? 'ffmpeg-linux-arm64' : 'ffmpeg-linux-x64';
+    }
+}
+
+/**
+ * 获取 ffmpeg 二进制文件路径
  */
 function getFfmpegPath() {
-    try {
-        return require('ffmpeg-static');
-    } catch (error) {
-        return null;
+    return path.join(BIN_DIR, getFfmpegBinaryName());
+}
+
+/**
+ * 检查 ffmpeg 是否已安装
+ */
+function isFfmpegInstalled() {
+    return fs.existsSync(getFfmpegPath());
+}
+
+/**
+ * 从 GitHub 获取最新发布的 ffmpeg 下载链接
+ */
+async function getFfmpegDownloadUrl() {
+    return new Promise((resolve, reject) => {
+        const assetName = getFfmpegAssetName();
+        const options = {
+            hostname: 'api.github.com',
+            path: '/repos/eugeneware/ffmpeg-static/releases/latest',
+            headers: {
+                'User-Agent': 'Eagle-Video-Downloader'
+            }
+        };
+
+        https.get(options, (response) => {
+            let data = '';
+            response.on('data', (chunk) => { data += chunk; });
+            response.on('end', () => {
+                try {
+                    const release = JSON.parse(data);
+                    const asset = release.assets.find(a => a.name === assetName);
+                    if (asset) {
+                        resolve(asset.browser_download_url);
+                    } else {
+                        reject(new Error(`ffmpeg asset ${assetName} not found in release`));
+                    }
+                } catch (error) {
+                    reject(error);
+                }
+            });
+        }).on('error', reject);
+    });
+}
+
+/**
+ * 下载 ffmpeg 二进制文件
+ */
+async function downloadFfmpeg(onProgress) {
+    if (!fs.existsSync(BIN_DIR)) {
+        fs.mkdirSync(BIN_DIR, { recursive: true });
     }
+
+    const destPath = getFfmpegPath();
+
+    const downloadUrl = await getFfmpegDownloadUrl();
+    await downloadFile(downloadUrl, destPath, onProgress);
+
+    if (os.platform() !== 'win32') {
+        fs.chmodSync(destPath, '755');
+    }
+
+    return destPath;
 }
 
 /**
@@ -181,5 +260,7 @@ module.exports = {
     getYtDlpPath,
     getFfmpegPath,
     isYtDlpInstalled,
-    downloadYtDlp
+    isFfmpegInstalled,
+    downloadYtDlp,
+    downloadFfmpeg
 };

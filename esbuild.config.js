@@ -9,13 +9,12 @@ const isWatch = process.argv.includes('--watch');
 const buildOptions = {
   entryPoints: ['js/plugin.js'],
   bundle: true,
-  outfile: 'dist/plugin.js',
+  outfile: 'Plugin/dist/plugin.js',
   platform: 'node',
   format: 'cjs',
   target: 'node16',
   external: [
-    'electron',
-    'ffmpeg-static'  // Keep as external since it provides a binary path
+    'electron'
   ],
   sourcemap: false,
   minify: false,

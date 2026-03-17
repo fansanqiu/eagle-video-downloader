@@ -4,7 +4,7 @@
  */
 
 // 导入模块
-const { getFfmpegPath, isYtDlpInstalled, downloadYtDlp } = require("./binary");
+const { getFfmpegPath, isYtDlpInstalled, isFfmpegInstalled, downloadYtDlp, downloadFfmpeg } = require("./binary");
 const downloader = require("./downloader");
 const eagleApi = require("./eagle");
 const ui = require("./ui");
@@ -19,8 +19,8 @@ let currentDownload = null;
  * 初始化 i18next
  */
 async function initI18n() {
-  const enTranslation = require("../_locales/en.json");
-  const zhCNTranslation = require("../_locales/zh_CN.json");
+  const enTranslation = require("../Plugin/_locales/en.json");
+  const zhCNTranslation = require("../Plugin/_locales/zh_CN.json");
 
   await i18next.init({
     lng: eagle.app.locale || "en",
@@ -106,24 +106,29 @@ function setupEventListeners() {
  * 初始化二进制文件
  */
 async function initializeBinaries() {
-  // 检查 ffmpeg
-  getFfmpegPath();
-
-  if (isYtDlpInstalled()) {
+  if (isYtDlpInstalled() && isFfmpegInstalled()) {
     isInitialized = true;
     initializeMainUI();
     ui.showMainUI();
     return;
   }
 
-  // 需要下载 yt-dlp
   ui.showInitUI();
-  ui.updateInitStatus(i18next.t("init.downloading"), 0);
 
   try {
-    await downloadYtDlp((progress) => {
-      ui.updateInitStatus(i18next.t("init.downloading"), progress);
-    });
+    if (!isYtDlpInstalled()) {
+      ui.updateInitStatus(i18next.t("init.downloadingYtdlp"), 0);
+      await downloadYtDlp((progress) => {
+        ui.updateInitStatus(i18next.t("init.downloadingYtdlp"), progress);
+      });
+    }
+
+    if (!isFfmpegInstalled()) {
+      ui.updateInitStatus(i18next.t("init.downloadingFfmpeg"), 0);
+      await downloadFfmpeg((progress) => {
+        ui.updateInitStatus(i18next.t("init.downloadingFfmpeg"), progress);
+      });
+    }
 
     ui.updateInitStatus(i18next.t("init.complete"), 100);
 

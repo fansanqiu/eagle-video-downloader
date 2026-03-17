@@ -21,6 +21,8 @@
   },
   "init": {
     "downloading": "正在下载 yt-dlp...",
+    "downloadingYtdlp": "正在下载 yt-dlp...",
+    "downloadingFfmpeg": "正在下载 ffmpeg...",
     "complete": "初始化完成！",
     "failed": "初始化失败",
     "hint": "首次使用需要下载必要组件，请稍候...",

@@ -21,6 +21,8 @@
   },
   "init": {
     "downloading": "Downloading yt-dlp...",
+    "downloadingYtdlp": "Downloading yt-dlp...",
+    "downloadingFfmpeg": "Downloading ffmpeg...",
     "complete": "Initialization complete!",
     "failed": "Initialization failed",
     "hint": "First-time setup requires downloading components, please wait...",

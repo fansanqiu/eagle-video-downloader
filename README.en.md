@@ -62,20 +62,23 @@ This is a one-time download. Please wait for initialization to complete.
 ### Project Structure
 
 ```
-├── index.html           # UI interface (embedded CSS)
 ├── js/
 │   ├── plugin.js        # Main entry point
 │   ├── ui.js            # UI management module
 │   ├── downloader.js    # Video download logic
 │   ├── binary.js        # Binary file management (yt-dlp/ffmpeg)
 │   └── eagle.js         # Eagle API integration
-├── dist/plugin.js       # Build output (esbuild)
-├── bin/                 # yt-dlp and ffmpeg binaries (auto-downloaded)
-├── _locales/            # Internationalization files
-│   ├── en.json          # English translations
-│   └── zh_CN.json       # Chinese translations
-├── assets/              # Icons and resources
-└── manifest.json        # Eagle plugin configuration
+├── Plugin/              # Packaged plugin directory (point Eagle here)
+│   ├── manifest.json    # Eagle plugin configuration
+│   ├── index.html       # UI interface (embedded CSS)
+│   ├── assets/          # Icons and resources
+│   ├── _locales/        # Internationalization files
+│   │   ├── en.json      # English translations
+│   │   └── zh_CN.json   # Chinese translations
+│   ├── dist/plugin.js   # Build output (esbuild, gitignored)
+│   └── bin/             # yt-dlp and ffmpeg binaries (auto-downloaded, gitignored)
+├── esbuild.config.js
+└── package.json
 ```
 
 ### Development Commands
@@ -94,7 +97,7 @@ npm run dev
 ### Tech Stack
 
 - **yt-dlp**: Core video download engine
-- **ffmpeg-static**: Audio/video merging
+- **ffmpeg**: Audio/video merging (downloaded at runtime)
 - **esbuild**: Fast bundling
 - **i18next**: Internationalization support
 
