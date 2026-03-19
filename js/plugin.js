@@ -3,6 +3,7 @@
  * 主入口 - 处理插件初始化和下载队列管理
  */
 
+const i18next = require("i18next");
 const { isYtDlpInstalled, isFfmpegInstalled, downloadYtDlp, downloadFfmpeg } = require("./binary");
 const downloader = require("./downloader");
 const eagleApi = require("./eagle");
@@ -32,6 +33,9 @@ async function initI18n() {
       zh_CN: { translation: zhCNTranslation },
     },
   });
+  
+  // 将 i18next 设置为全局变量，供其他模块使用
+  global.i18next = i18next;
 }
 
 /**

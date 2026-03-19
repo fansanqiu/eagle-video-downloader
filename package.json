@@ -8,7 +8,9 @@
     "dev": "node esbuild.config.js --watch",
     "prepublish": "npm run build && rm -rf Plugin/bin/"
   },
-  "dependencies": {},
+  "dependencies": {
+    "i18next": "^25.8.19"
+  },
   "devDependencies": {
     "esbuild": "^0.19.0"
   },
