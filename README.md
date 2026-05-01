@@ -4,111 +4,49 @@
 
 [English](./README.en.md) | 中文
 
-从 **1000+ 网站**直接下载视频到 Eagle。基于 [yt-dlp](https://github.com/yt-dlp/yt-dlp) 构建。
+从 1000+ 网站直接下载视频到 Eagle。基于 [yt-dlp](https://github.com/yt-dlp/yt-dlp) 构建。
 
 ## 支持的平台
 
-- YouTube
-- Twitter / X
-- TikTok
-- Bilibili
-- Instagram
-- Vimeo
-- 以及[更多平台...](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md)
+YouTube、Twitter / X、TikTok、Bilibili、Instagram、Vimeo 以及[更多平台](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md)。
 
 ## 功能特性
 
-- 🎬 **多平台支持**：支持 1000+ 视频网站下载
-- 📦 **自动配置**：首次运行自动下载所需组件
-- 🔄 **高质量下载**：自动选择最佳画质，使用 Eagle 内置 ffmpeg 合并音视频
-- 🦅 **Eagle 集成**：自动导入视频到 Eagle 并保存元数据
-- 🌐 **多语言支持**：支持中文和英文界面
-- ⚡ **实时进度**：下载过程中显示实时进度反馈
-- 🎯 **简洁界面**：极简设计，专注下载体验
+支持 1000+ 视频网站，首次运行自动下载 yt-dlp，使用 Eagle 内置 ffmpeg 合并音视频，下载完成后自动导入到 Eagle 并保存元数据，支持中英文界面，显示实时下载进度。
 
 ## 安装方式
 
-### Eagle 社区
+通过 [Eagle 社区](https://community-cn.eagle.cool/plugins) 安装，或在 Eagle 应用的插件中心搜索安装。
 
-插件已发布在 Eagle 社区：
-
-- 通过 [Eagle 社区](https://community-cn.eagle.cool/plugins) 安装
-- 或在 Eagle 应用的插件中心搜索安装
-
-### 手动安装
-
-1. 下载[最新版本](https://github.com/fansanqiu/eagle-video-downloader/releases)
-2. 在 Eagle 中：插件 → 开发者选项... → 导入本地项目
+手动安装：下载[最新版本](https://github.com/fansanqiu/eagle-video-downloader/releases)，在 Eagle 中选择 插件 → 开发者选项 → 导入本地项目。
 
 ## 首次运行
 
-首次启动时，插件会自动下载必要组件：
-
-- **yt-dlp** (~30MB) - 视频提取引擎
-
-ffmpeg 直接使用 Eagle 内置版本，无需额外下载。
+首次启动时插件会自动下载 yt-dlp（约 30MB）。ffmpeg 直接使用 Eagle 内置版本，无需额外下载。
 
 ## 使用方法
 
-1. 从任意支持的网站复制视频链接
-2. 粘贴到插件输入框中
-3. 点击下载按钮开始下载
+1. 复制视频链接
+2. 粘贴到插件输入框
+3. 点击下载按钮
 4. 下载完成后自动导入到 Eagle
-5. 可以查看实时下载进度
 
-## 开发指南
-
-### 项目结构
-
-```
-├── js/
-│   ├── plugin.js        # 主入口文件
-│   ├── ui.js            # UI 管理模块
-│   ├── downloader.js    # 视频下载逻辑
-│   ├── binary.js        # 二进制文件管理（yt-dlp）
-│   └── eagle.js         # Eagle API 集成
-├── Plugin/              # 插件打包目录（在 Eagle 中指向此目录）
-│   ├── manifest.json    # Eagle 插件配置
-│   ├── index.html       # UI 界面（内嵌 CSS）
-│   ├── assets/          # 图标和资源
-│   ├── _locales/        # 国际化文件
-│   │   ├── en.json      # 英文翻译
-│   │   └── zh_CN.json   # 中文翻译
-│   ├── dist/plugin.js   # 打包输出文件（esbuild，已 gitignore）
-│   └── bin/             # yt-dlp 二进制文件（自动下载，已 gitignore）
-├── esbuild.config.js
-└── package.json
-```
-
-### 开发命令
+## 开发
 
 ```bash
-# 安装依赖
-npm install
-
-# 构建插件
-npm run build
-
-# 开发模式（监听文件变化）
-npm run dev
+npm install      # 安装依赖
+npm run build    # 构建插件
+npm run dev      # 开发模式（监听文件变化）
 ```
 
-### 技术栈
-
-- **yt-dlp**：视频下载核心引擎
-- **ffmpeg**：音视频合并处理（使用 Eagle 内置版本）
-- **esbuild**：快速打包构建
-- **i18next**：国际化支持
+项目使用 esbuild 打包，i18next 国际化，yt-dlp 负责视频提取，ffmpeg 由 Eagle 内置提供。
 
 ## 系统要求
 
-- Eagle 4.0 或更高版本
-- 网络连接（用于首次配置和下载视频）
+Eagle 4.0 或更高版本，需要网络连接。
 
 ## 开源协议
 
 MIT © [fansanqiu](https://github.com/fansanqiu)
 
----
-
-> **注意**：本工具仅供个人使用。请遵守视频平台的服务条款和您所在地区的版权法律。
+本工具仅供个人使用，请遵守视频平台的服务条款和版权法律。

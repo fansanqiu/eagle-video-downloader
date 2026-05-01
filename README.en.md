@@ -4,111 +4,49 @@
 
 English | [中文](./README.md)
 
-Download videos directly to Eagle from **1000+ websites**. Built on [yt-dlp](https://github.com/yt-dlp/yt-dlp).
+Download videos directly to Eagle from 1000+ websites. Built on [yt-dlp](https://github.com/yt-dlp/yt-dlp).
 
 ## Supported Platforms
 
-- YouTube
-- Twitter / X
-- TikTok
-- Bilibili
-- Instagram
-- Vimeo
-- And [many more...](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md)
+YouTube, Twitter / X, TikTok, Bilibili, Instagram, Vimeo, and [many more](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md).
 
 ## Features
 
-- 🎬 **Multi-Platform Support**: Download from 1000+ video websites
-- 📦 **Auto Configuration**: Automatically downloads required components on first run
-- 🔄 **High Quality Downloads**: Auto-selects best quality, merges audio/video with Eagle's built-in ffmpeg
-- 🦅 **Eagle Integration**: Automatically imports videos to Eagle with metadata
-- 🌐 **Multi-Language**: Supports Chinese and English interfaces
-- ⚡ **Real-Time Progress**: Live progress feedback during downloads
-- 🎯 **Clean Interface**: Minimalist design focused on download experience
+Supports 1000+ video websites. Downloads yt-dlp automatically on first run. Uses Eagle's built-in ffmpeg for audio/video merging. Automatically imports downloaded videos to Eagle with metadata. Supports Chinese and English interfaces with real-time progress display.
 
 ## Installation
 
-### Eagle Community
+Install via [Eagle Community](https://community-cn.eagle.cool/plugins) or search for it in Eagle's plugin center.
 
-The plugin is available on Eagle Community:
-
-- Install via [Eagle Community](https://community-cn.eagle.cool/plugins)
-- Or search in Eagle's plugin center
-
-### Manual Installation
-
-1. Download the [latest release](https://github.com/fansanqiu/eagle-video-downloader/releases)
-2. In Eagle: Plugins → Developer Options... → Import Local Project
+Manual install: download the [latest release](https://github.com/fansanqiu/eagle-video-downloader/releases), then in Eagle go to Plugins → Developer Options → Import Local Project.
 
 ## First Run
 
-On first launch, the plugin will automatically download the necessary component:
-
-- **yt-dlp** (~30MB) - Video extraction engine
-
-ffmpeg uses Eagle's built-in version — no additional download required.
+On first launch the plugin automatically downloads yt-dlp (~30MB). ffmpeg uses Eagle's built-in version — no additional download required.
 
 ## Usage
 
-1. Copy a video link from any supported website
+1. Copy a video link
 2. Paste it into the plugin input box
-3. Click the download button to start
-4. Video will be automatically imported to Eagle after download
-5. View real-time download progress
+3. Click the download button
+4. The video is automatically imported to Eagle after download
 
-## Development Guide
-
-### Project Structure
-
-```
-├── js/
-│   ├── plugin.js        # Main entry point
-│   ├── ui.js            # UI management module
-│   ├── downloader.js    # Video download logic
-│   ├── binary.js        # Binary file management (yt-dlp)
-│   └── eagle.js         # Eagle API integration
-├── Plugin/              # Packaged plugin directory (point Eagle here)
-│   ├── manifest.json    # Eagle plugin configuration
-│   ├── index.html       # UI interface (embedded CSS)
-│   ├── assets/          # Icons and resources
-│   ├── _locales/        # Internationalization files
-│   │   ├── en.json      # English translations
-│   │   └── zh_CN.json   # Chinese translations
-│   ├── dist/plugin.js   # Build output (esbuild, gitignored)
-│   └── bin/             # yt-dlp binary (auto-downloaded, gitignored)
-├── esbuild.config.js
-└── package.json
-```
-
-### Development Commands
+## Development
 
 ```bash
-# Install dependencies
-npm install
-
-# Build plugin
-npm run build
-
-# Development mode (watch for changes)
-npm run dev
+npm install      # Install dependencies
+npm run build    # Build plugin
+npm run dev      # Development mode (watch for changes)
 ```
 
-### Tech Stack
-
-- **yt-dlp**: Core video download engine
-- **ffmpeg**: Audio/video merging (Eagle's built-in version)
-- **esbuild**: Fast bundling
-- **i18next**: Internationalization support
+The project uses esbuild for bundling, i18next for internationalization, yt-dlp for video extraction, and Eagle's built-in ffmpeg.
 
 ## System Requirements
 
-- Eagle 4.0 or higher
-- Internet connection (for initial setup and video downloads)
+Eagle 4.0 or higher. Internet connection required.
 
 ## License
 
 MIT © [fansanqiu](https://github.com/fansanqiu)
 
----
-
-> **Note**: This tool is for personal use only. Please comply with the terms of service of video platforms and copyright laws in your region.
+For personal use only. Please comply with the terms of service of video platforms and applicable copyright laws.
