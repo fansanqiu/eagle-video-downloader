@@ -56,6 +56,16 @@ System requirements: Eagle 4.0 or higher, internet connection required.
 
 ---
 
+## 致谢 / Acknowledgements
+
+中文：
+本项目基于 OlivierEstevez 开发的 eagle-twitter-video-downloader（https://github.com/OlivierEstevez/eagle-twitter-video-downloader）进行扩展，感谢原作者的开创性工作。
+
+英文：
+This project is based on eagle-twitter-video-downloader by OlivierEstevez (https://github.com/OlivierEstevez/eagle-twitter-video-downloader). Thanks to the original author for the foundational work.
+
+---
+
 ## 版本日志（中文）
 
 v2.1.0

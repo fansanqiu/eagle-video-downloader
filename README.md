@@ -50,3 +50,7 @@ Eagle 4.0 或更高版本，需要网络连接。
 MIT © [fansanqiu](https://github.com/fansanqiu)
 
 本工具仅供个人使用，请遵守视频平台的服务条款和版权法律。
+
+## 致谢
+
+本项目基于 [OlivierEstevez/eagle-twitter-video-downloader](https://github.com/OlivierEstevez/eagle-twitter-video-downloader) 开发，感谢原作者的开创性工作。

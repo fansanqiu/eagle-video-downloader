@@ -50,3 +50,7 @@ Eagle 4.0 or higher. Internet connection required.
 MIT © [fansanqiu](https://github.com/fansanqiu)
 
 For personal use only. Please comply with the terms of service of video platforms and applicable copyright laws.
+
+## Acknowledgements
+
+This project is based on [OlivierEstevez/eagle-twitter-video-downloader](https://github.com/OlivierEstevez/eagle-twitter-video-downloader). Thanks to the original author for the foundational work.
