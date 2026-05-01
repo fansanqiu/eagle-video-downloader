@@ -22,15 +22,13 @@
   "init": {
     "downloading": "Downloading yt-dlp...",
     "downloadingYtdlp": "Downloading yt-dlp...",
-    "downloadingFfmpeg": "Downloading ffmpeg...",
     "complete": "Initialization complete!",
     "failed": "Initialization failed",
-    "hint": "First-time setup requires downloading components, please wait...",
+    "hint": "First-time setup requires downloading yt-dlp, please wait...",
     "networkError": "Initialization failed. Please check your network connection.",
-    "title": "First-time setup requires downloading components",
+    "title": "First-time setup: downloading required component",
     "componentYtdlp": "yt-dlp (video extraction engine)",
-    "componentFfmpeg": "ffmpeg (video transcoding tool)",
-    "startDownload": "Download Components",
+    "startDownload": "Download",
     "downloadingComponent": "Downloading {{name}}..."
   },
   "queue": {

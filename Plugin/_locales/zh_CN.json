@@ -22,15 +22,13 @@
   "init": {
     "downloading": "正在下载 yt-dlp...",
     "downloadingYtdlp": "正在下载 yt-dlp...",
-    "downloadingFfmpeg": "正在下载 ffmpeg...",
     "complete": "初始化完成！",
     "failed": "初始化失败",
-    "hint": "首次使用需要下载必要组件，请稍候...",
+    "hint": "首次使用需要下载 yt-dlp，请稍候...",
     "networkError": "初始化失败，请检查网络连接后重试",
-    "title": "首次使用需要下载必要组件",
+    "title": "首次使用：下载必要组件",
     "componentYtdlp": "yt-dlp（视频解析引擎）",
-    "componentFfmpeg": "ffmpeg（视频转码工具）",
-    "startDownload": "开始下载组件",
+    "startDownload": "开始下载",
     "downloadingComponent": "正在下载 {{name}}..."
   },
   "queue": {

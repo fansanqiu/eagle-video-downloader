@@ -4,7 +4,7 @@
  */
 
 const i18next = require("i18next");
-const { isYtDlpInstalled, isFfmpegInstalled, downloadYtDlp, downloadFfmpeg } = require("./binary");
+const { isYtDlpInstalled, downloadYtDlp } = require("./binary");
 const downloader = require("./downloader");
 const eagleApi = require("./eagle");
 const ui = require("./ui");
@@ -53,9 +53,6 @@ function applyTranslations() {
 
   const initComponentYtdlp = document.getElementById("initComponentYtdlp");
   if (initComponentYtdlp) initComponentYtdlp.textContent = i18next.t("init.componentYtdlp");
-
-  const initComponentFfmpeg = document.getElementById("initComponentFfmpeg");
-  if (initComponentFfmpeg) initComponentFfmpeg.textContent = i18next.t("init.componentFfmpeg");
 
   const initStartBtn = document.getElementById("initStartBtn");
   if (initStartBtn) initStartBtn.textContent = i18next.t("init.startDownload");
@@ -108,9 +105,10 @@ function setupEventListeners() {
 
 /**
  * 初始化二进制文件
+ * ffmpeg 使用 Eagle 内置版本，仅需下载 yt-dlp
  */
 async function initializeBinaries() {
-  if (isYtDlpInstalled() && isFfmpegInstalled()) {
+  if (isYtDlpInstalled()) {
     isInitialized = true;
     initializeMainUI();
     return;
@@ -122,23 +120,14 @@ async function initializeBinaries() {
     document.addEventListener("confirmInit", resolve, { once: true });
   });
 
-  // 用户确认，开始下载
+  // 用户确认，开始下载 yt-dlp
   ui.showInitDownloading();
 
   try {
-    if (!isYtDlpInstalled()) {
-      ui.updateInitStatus(i18next.t("init.downloadingYtdlp"), 0);
-      await downloadYtDlp((progress) => {
-        ui.updateInitStatus(i18next.t("init.downloadingYtdlp"), progress);
-      });
-    }
-
-    if (!isFfmpegInstalled()) {
-      ui.updateInitStatus(i18next.t("init.downloadingFfmpeg"), 0);
-      await downloadFfmpeg((progress) => {
-        ui.updateInitStatus(i18next.t("init.downloadingFfmpeg"), progress);
-      });
-    }
+    ui.updateInitStatus(i18next.t("init.downloadingYtdlp"), 0);
+    await downloadYtDlp((progress) => {
+      ui.updateInitStatus(i18next.t("init.downloadingYtdlp"), progress);
+    });
 
     ui.updateInitStatus(i18next.t("init.complete"), 100);
     await new Promise((resolve) => setTimeout(resolve, 500));

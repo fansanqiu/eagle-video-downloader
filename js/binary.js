@@ -1,6 +1,7 @@
 /**
  * 二进制文件管理模块
- * 处理 yt-dlp 和 ffmpeg 的下载和配置
+ * 处理 yt-dlp 的下载和配置
+ * ffmpeg 使用 Eagle 内置版本，无需单独下载
  */
 
 const path = require('path');
@@ -37,100 +38,63 @@ function getYtDlpPath() {
 }
 
 /**
- * 获取 ffmpeg 本地文件名
- */
-function getFfmpegBinaryName() {
-    return os.platform() === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
-}
-
-/**
- * 获取 ffmpeg GitHub release asset 名称
- */
-function getFfmpegAssetName() {
-    const platform = os.platform();
-    const arch = os.arch();
-    if (platform === 'darwin') {
-        return arch === 'arm64' ? 'ffmpeg-darwin-arm64' : 'ffmpeg-darwin-x64';
-    } else if (platform === 'win32') {
-        return 'ffmpeg-win32-x64.exe';
-    } else {
-        return arch === 'arm64' ? 'ffmpeg-linux-arm64' : 'ffmpeg-linux-x64';
-    }
-}
-
-/**
- * 获取 ffmpeg 二进制文件路径
- */
-function getFfmpegPath() {
-    return path.join(BIN_DIR, getFfmpegBinaryName());
-}
-
-/**
- * 检查 ffmpeg 是否已安装
- */
-function isFfmpegInstalled() {
-    return fs.existsSync(getFfmpegPath());
-}
-
-/**
- * 从 GitHub 获取最新发布的 ffmpeg 下载链接
- */
-async function getFfmpegDownloadUrl() {
-    return new Promise((resolve, reject) => {
-        const assetName = getFfmpegAssetName();
-        const options = {
-            hostname: 'api.github.com',
-            path: '/repos/eugeneware/ffmpeg-static/releases/latest',
-            headers: {
-                'User-Agent': 'Eagle-Video-Downloader'
-            }
-        };
-
-        https.get(options, (response) => {
-            let data = '';
-            response.on('data', (chunk) => { data += chunk; });
-            response.on('end', () => {
-                try {
-                    const release = JSON.parse(data);
-                    const asset = release.assets.find(a => a.name === assetName);
-                    if (asset) {
-                        resolve(asset.browser_download_url);
-                    } else {
-                        reject(new Error(`ffmpeg asset ${assetName} not found in release`));
-                    }
-                } catch (error) {
-                    reject(error);
-                }
-            });
-        }).on('error', reject);
-    });
-}
-
-/**
- * 下载 ffmpeg 二进制文件
- */
-async function downloadFfmpeg(onProgress) {
-    if (!fs.existsSync(BIN_DIR)) {
-        fs.mkdirSync(BIN_DIR, { recursive: true });
-    }
-
-    const destPath = getFfmpegPath();
-
-    const downloadUrl = await getFfmpegDownloadUrl();
-    await downloadFile(downloadUrl, destPath, onProgress);
-
-    if (os.platform() !== 'win32') {
-        fs.chmodSync(destPath, '755');
-    }
-
-    return destPath;
-}
-
-/**
  * 检查 yt-dlp 是否已安装
  */
 function isYtDlpInstalled() {
     return fs.existsSync(getYtDlpPath());
+}
+
+/**
+ * 获取 Eagle 数据目录（跨平台）
+ */
+function getEagleDataDir() {
+    const platform = os.platform();
+    if (platform === 'darwin') {
+        return path.join(os.homedir(), 'Library', 'Application Support', 'Eagle');
+    } else if (platform === 'win32') {
+        return path.join(os.homedir(), 'AppData', 'Roaming', 'Eagle');
+    } else {
+        return path.join(os.homedir(), '.config', 'Eagle');
+    }
+}
+
+/**
+ * 获取 Eagle 内置 ffmpeg 的目录名（跨平台）
+ * Eagle 将 ffmpeg 作为系统插件存储：
+ *   ~/Library/Application Support/Eagle/Plugins/ffmpeg-{platform}-{arch}/
+ */
+function getEagleFfmpegDirName() {
+    const platform = os.platform();
+    const arch = os.arch();
+    const archName = arch === 'arm64' ? 'arm64' : 'x64';
+
+    if (platform === 'darwin') {
+        return `ffmpeg-mac-${archName}`;
+    } else if (platform === 'win32') {
+        return `ffmpeg-win-${archName}`;
+    } else {
+        return `ffmpeg-linux-${archName}`;
+    }
+}
+
+/**
+ * 获取 Eagle 内置 ffmpeg 的完整路径
+ */
+function getEagleFfmpegPath() {
+    const binaryName = os.platform() === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
+    return path.join(getEagleDataDir(), 'Plugins', getEagleFfmpegDirName(), binaryName);
+}
+
+/**
+ * 获取可用的 ffmpeg 路径
+ * 优先使用 Eagle 内置版本
+ */
+function getFfmpegPath() {
+    const eagleFfmpeg = getEagleFfmpegPath();
+    if (fs.existsSync(eagleFfmpeg)) {
+        return eagleFfmpeg;
+    }
+    return null;
 }
 
 /**
@@ -260,7 +224,5 @@ module.exports = {
     getYtDlpPath,
     getFfmpegPath,
     isYtDlpInstalled,
-    isFfmpegInstalled,
-    downloadYtDlp,
-    downloadFfmpeg
+    downloadYtDlp
 };
