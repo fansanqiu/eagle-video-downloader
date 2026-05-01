@@ -33,6 +33,8 @@ Download videos from YouTube, Twitter, TikTok, Bilibili and 1000+ other sites di
 
 系统要求：Eagle 4.0 或更高版本，需要网络连接。
 
+本项目基于 OlivierEstevez 开发的 eagle-twitter-video-downloader（https://github.com/OlivierEstevez/eagle-twitter-video-downloader）进行扩展，感谢原作者的开创性工作。
+
 ---
 
 ## 详细说明（英文）
@@ -47,22 +49,14 @@ Supports Chinese and English interfaces with real-time progress display.
 
 System requirements: Eagle 4.0 or higher, internet connection required.
 
+This project is based on eagle-twitter-video-downloader by OlivierEstevez (https://github.com/OlivierEstevez/eagle-twitter-video-downloader). Thanks to the original author for the foundational work.
+
 ---
 
 ## 标签 / Tags
 
 中文建议标签：视频下载、YouTube、Twitter、TikTok、Bilibili、yt-dlp
 英文建议标签：video downloader, YouTube, Twitter, TikTok, Bilibili, yt-dlp
-
----
-
-## 致谢 / Acknowledgements
-
-中文：
-本项目基于 OlivierEstevez 开发的 eagle-twitter-video-downloader（https://github.com/OlivierEstevez/eagle-twitter-video-downloader）进行扩展，感谢原作者的开创性工作。
-
-英文：
-This project is based on eagle-twitter-video-downloader by OlivierEstevez (https://github.com/OlivierEstevez/eagle-twitter-video-downloader). Thanks to the original author for the foundational work.
 
 ---
 
