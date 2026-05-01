@@ -20,7 +20,7 @@
 
 - 🎬 **多平台支持**：支持 1000+ 视频网站下载
 - 📦 **自动配置**：首次运行自动下载所需组件
-- 🔄 **高质量下载**：自动选择最佳画质，使用 ffmpeg 合并音视频
+- 🔄 **高质量下载**：自动选择最佳画质，使用 Eagle 内置 ffmpeg 合并音视频
 - 🦅 **Eagle 集成**：自动导入视频到 Eagle 并保存元数据
 - 🌐 **多语言支持**：支持中文和英文界面
 - ⚡ **实时进度**：下载过程中显示实时进度反馈
@@ -37,7 +37,7 @@
 
 ### 手动安装
 
-1. 下载[最新版本](https://github.com/OlivierEstevez/eagle-twitter-video-downloader/releases)
+1. 下载[最新版本](https://github.com/fansanqiu/eagle-video-downloader/releases)
 2. 在 Eagle 中：插件 → 开发者选项... → 导入本地项目
 
 ## 首次运行
@@ -45,9 +45,8 @@
 首次启动时，插件会自动下载必要组件：
 
 - **yt-dlp** (~30MB) - 视频提取引擎
-- **ffmpeg** (~80MB) - 用于音视频合并
 
-这是一次性下载，请等待初始化完成。
+ffmpeg 直接使用 Eagle 内置版本，无需额外下载。
 
 ## 使用方法
 
@@ -66,7 +65,7 @@
 │   ├── plugin.js        # 主入口文件
 │   ├── ui.js            # UI 管理模块
 │   ├── downloader.js    # 视频下载逻辑
-│   ├── binary.js        # 二进制文件管理（yt-dlp/ffmpeg）
+│   ├── binary.js        # 二进制文件管理（yt-dlp）
 │   └── eagle.js         # Eagle API 集成
 ├── Plugin/              # 插件打包目录（在 Eagle 中指向此目录）
 │   ├── manifest.json    # Eagle 插件配置
@@ -76,7 +75,7 @@
 │   │   ├── en.json      # 英文翻译
 │   │   └── zh_CN.json   # 中文翻译
 │   ├── dist/plugin.js   # 打包输出文件（esbuild，已 gitignore）
-│   └── bin/             # yt-dlp 和 ffmpeg 二进制文件（自动下载，已 gitignore）
+│   └── bin/             # yt-dlp 二进制文件（自动下载，已 gitignore）
 ├── esbuild.config.js
 └── package.json
 ```
@@ -97,18 +96,18 @@ npm run dev
 ### 技术栈
 
 - **yt-dlp**：视频下载核心引擎
-- **ffmpeg**：音视频合并处理（运行时自动下载）
+- **ffmpeg**：音视频合并处理（使用 Eagle 内置版本）
 - **esbuild**：快速打包构建
 - **i18next**：国际化支持
 
 ## 系统要求
 
-- Eagle 3.0 或更高版本
+- Eagle 4.0 或更高版本
 - 网络连接（用于首次配置和下载视频）
 
 ## 开源协议
 
-MIT © [Olivier Estévez](https://github.com/OlivierEstevez)
+MIT © [fansanqiu](https://github.com/fansanqiu)
 
 ---
 

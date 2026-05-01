@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Eagle Video Downloader is an **Eagle app plugin** that downloads videos from 1000+ websites (YouTube, Twitter/X, TikTok, Bilibili, etc.) directly into Eagle media management software. It uses `yt-dlp` + `ffmpeg` under the hood and auto-downloads these binaries on first run.
+Eagle Video Downloader is an **Eagle app plugin** that downloads videos from 1000+ websites (YouTube, Twitter/X, TikTok, Bilibili, etc.) directly into Eagle media management software. It uses `yt-dlp` under the hood (auto-downloaded on first run) and relies on Eagle's built-in `ffmpeg` for audio/video merging.
 
-The plugin window is fixed at **400×84px** (frameless, vibrancy enabled).
+The plugin window is **400×300px** (frameless, vibrancy enabled), with a scrollable download queue.
 
 ## Commands
 

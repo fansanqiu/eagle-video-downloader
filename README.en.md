@@ -20,7 +20,7 @@ Download videos directly to Eagle from **1000+ websites**. Built on [yt-dlp](htt
 
 - 🎬 **Multi-Platform Support**: Download from 1000+ video websites
 - 📦 **Auto Configuration**: Automatically downloads required components on first run
-- 🔄 **High Quality Downloads**: Auto-selects best quality, merges audio/video with ffmpeg
+- 🔄 **High Quality Downloads**: Auto-selects best quality, merges audio/video with Eagle's built-in ffmpeg
 - 🦅 **Eagle Integration**: Automatically imports videos to Eagle with metadata
 - 🌐 **Multi-Language**: Supports Chinese and English interfaces
 - ⚡ **Real-Time Progress**: Live progress feedback during downloads
@@ -37,17 +37,16 @@ The plugin is available on Eagle Community:
 
 ### Manual Installation
 
-1. Download the [latest release](https://github.com/OlivierEstevez/eagle-twitter-video-downloader/releases)
+1. Download the [latest release](https://github.com/fansanqiu/eagle-video-downloader/releases)
 2. In Eagle: Plugins → Developer Options... → Import Local Project
 
 ## First Run
 
-On first launch, the plugin will automatically download necessary components:
+On first launch, the plugin will automatically download the necessary component:
 
 - **yt-dlp** (~30MB) - Video extraction engine
-- **ffmpeg** (~80MB) - For audio/video merging
 
-This is a one-time download. Please wait for initialization to complete.
+ffmpeg uses Eagle's built-in version — no additional download required.
 
 ## Usage
 
@@ -66,7 +65,7 @@ This is a one-time download. Please wait for initialization to complete.
 │   ├── plugin.js        # Main entry point
 │   ├── ui.js            # UI management module
 │   ├── downloader.js    # Video download logic
-│   ├── binary.js        # Binary file management (yt-dlp/ffmpeg)
+│   ├── binary.js        # Binary file management (yt-dlp)
 │   └── eagle.js         # Eagle API integration
 ├── Plugin/              # Packaged plugin directory (point Eagle here)
 │   ├── manifest.json    # Eagle plugin configuration
@@ -76,7 +75,7 @@ This is a one-time download. Please wait for initialization to complete.
 │   │   ├── en.json      # English translations
 │   │   └── zh_CN.json   # Chinese translations
 │   ├── dist/plugin.js   # Build output (esbuild, gitignored)
-│   └── bin/             # yt-dlp and ffmpeg binaries (auto-downloaded, gitignored)
+│   └── bin/             # yt-dlp binary (auto-downloaded, gitignored)
 ├── esbuild.config.js
 └── package.json
 ```
@@ -97,18 +96,18 @@ npm run dev
 ### Tech Stack
 
 - **yt-dlp**: Core video download engine
-- **ffmpeg**: Audio/video merging (downloaded at runtime)
+- **ffmpeg**: Audio/video merging (Eagle's built-in version)
 - **esbuild**: Fast bundling
 - **i18next**: Internationalization support
 
 ## System Requirements
 
-- Eagle 3.0 or higher
+- Eagle 4.0 or higher
 - Internet connection (for initial setup and video downloads)
 
 ## License
 
-MIT © [Olivier Estévez](https://github.com/OlivierEstevez)
+MIT © [fansanqiu](https://github.com/fansanqiu)
 
 ---
 
