@@ -13,6 +13,33 @@ const https = require('https');
 const PLUGIN_ROOT = path.join(__dirname, '..');
 const BIN_DIR = path.join(PLUGIN_ROOT, 'bin');
 
+function isSSLError(err) {
+    return (
+        err.code === 'ERR_SSL_UNEXPECTED_EOF' ||
+        err.code === 'EPROTO' ||
+        (err.message && (err.message.includes('SSL') || err.message.includes('ssl')))
+    );
+}
+
+function httpsGetJson(options, sslFallback = false) {
+    return new Promise((resolve, reject) => {
+        const opts = sslFallback ? { ...options, rejectUnauthorized: false } : options;
+        https.get(opts, (response) => {
+            let data = '';
+            response.on('data', (chunk) => { data += chunk; });
+            response.on('end', () => {
+                try { resolve(JSON.parse(data)); } catch (e) { reject(e); }
+            });
+        }).on('error', (err) => {
+            if (isSSLError(err) && !sslFallback) {
+                httpsGetJson(options, true).then(resolve).catch(reject);
+            } else {
+                reject(err);
+            }
+        });
+    });
+}
+
 /**
  * 获取特定平台的 yt-dlp 二进制文件名
  */
@@ -100,16 +127,27 @@ function getFfmpegPath() {
 /**
  * 下载文件并显示进度
  */
-function downloadFile(url, destPath, onProgress) {
+function downloadFile(url, destPath, onProgress, sslFallback = false) {
     return new Promise((resolve, reject) => {
         const file = fs.createWriteStream(destPath);
 
-        const request = https.get(url, (response) => {
-            // 处理重定向
-            if (response.statusCode === 301 || response.statusCode === 302) {
+        let reqOptions = url;
+        if (sslFallback) {
+            const u = typeof url === 'string' ? new URL(url) : url;
+            reqOptions = {
+                hostname: u.hostname,
+                port: u.port || 443,
+                path: u.pathname + (u.search || ''),
+                rejectUnauthorized: false,
+            };
+        }
+
+        const request = https.get(reqOptions, (response) => {
+            // 处理重定向（301/302/307/308）
+            if ([301, 302, 307, 308].includes(response.statusCode)) {
                 file.close();
                 fs.unlinkSync(destPath);
-                downloadFile(response.headers.location, destPath, onProgress)
+                downloadFile(response.headers.location, destPath, onProgress, sslFallback)
                     .then(resolve)
                     .catch(reject);
                 return;
@@ -145,7 +183,11 @@ function downloadFile(url, destPath, onProgress) {
             if (fs.existsSync(destPath)) {
                 fs.unlinkSync(destPath);
             }
-            reject(error);
+            if (isSSLError(error) && !sslFallback) {
+                downloadFile(url, destPath, onProgress, true).then(resolve).catch(reject);
+            } else {
+                reject(error);
+            }
         });
     });
 }
@@ -154,45 +196,20 @@ function downloadFile(url, destPath, onProgress) {
  * 从 GitHub 获取最新发布的 yt-dlp 下载链接
  */
 async function getYtDlpDownloadUrl() {
-    return new Promise((resolve, reject) => {
-        const binaryName = getYtDlpBinaryName();
-
-        if (binaryName === 'yt-dlp') {
-            reject(new Error(`Unsupported platform: ${os.platform()}`));
-            return;
-        }
-
-        const options = {
-            hostname: 'api.github.com',
-            path: '/repos/yt-dlp/yt-dlp/releases/latest',
-            headers: {
-                'User-Agent': 'Eagle-Video-Downloader'
-            }
-        };
-
-        https.get(options, (response) => {
-            let data = '';
-
-            response.on('data', (chunk) => {
-                data += chunk;
-            });
-
-            response.on('end', () => {
-                try {
-                    const release = JSON.parse(data);
-                    const asset = release.assets.find(a => a.name === binaryName);
-
-                    if (asset) {
-                        resolve(asset.browser_download_url);
-                    } else {
-                        reject(new Error(`Binary ${binaryName} not found in release`));
-                    }
-                } catch (error) {
-                    reject(error);
-                }
-            });
-        }).on('error', reject);
+    const binaryName = getYtDlpBinaryName();
+    if (binaryName === 'yt-dlp') {
+        throw new Error(`Unsupported platform: ${os.platform()}`);
+    }
+    const release = await httpsGetJson({
+        hostname: 'api.github.com',
+        path: '/repos/yt-dlp/yt-dlp/releases/latest',
+        headers: { 'User-Agent': 'Eagle-Video-Downloader' },
     });
+    const asset = release.assets.find(a => a.name === binaryName);
+    if (!asset) {
+        throw new Error(`Binary ${binaryName} not found in release`);
+    }
+    return asset.browser_download_url;
 }
 
 /**
@@ -247,25 +264,13 @@ function getInstalledYtDlpVersion() {
 /**
  * 从 GitHub 获取最新 yt-dlp 的版本号（tag_name）
  */
-function getLatestYtDlpVersion() {
-    return new Promise((resolve, reject) => {
-        const options = {
-            hostname: 'api.github.com',
-            path: '/repos/yt-dlp/yt-dlp/releases/latest',
-            headers: { 'User-Agent': 'Eagle-Video-Downloader' }
-        };
-        https.get(options, (response) => {
-            let data = '';
-            response.on('data', (chunk) => { data += chunk; });
-            response.on('end', () => {
-                try {
-                    resolve(JSON.parse(data).tag_name);
-                } catch (e) {
-                    reject(e);
-                }
-            });
-        }).on('error', reject);
+async function getLatestYtDlpVersion() {
+    const release = await httpsGetJson({
+        hostname: 'api.github.com',
+        path: '/repos/yt-dlp/yt-dlp/releases/latest',
+        headers: { 'User-Agent': 'Eagle-Video-Downloader' },
     });
+    return release.tag_name;
 }
 
 /**

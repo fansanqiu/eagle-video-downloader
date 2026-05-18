@@ -87,9 +87,20 @@ function execYtDlp(args, onProgress, onOutput) {
       if (code === 0) {
         resolve(stdout);
       } else {
-        reject(
-          new Error(`${i18next.t("error.ytdlpExitedWithCode")} ${code}: ${stderr}`),
-        );
+        // SSL 错误时自动重试，添加 --no-check-certificate
+        const isSSLError = stderr.includes("SSL") || stderr.includes("ssl");
+        const alreadySkipping = args.includes("--no-check-certificate");
+        if (isSSLError && !alreadySkipping) {
+          execYtDlp([...args, "--no-check-certificate"], onProgress, onOutput)
+            .then(resolve)
+            .catch(() =>
+              reject(new Error(`${i18next.t("error.ytdlpExitedWithCode")} ${code}: ${stderr}`))
+            );
+        } else {
+          reject(
+            new Error(`${i18next.t("error.ytdlpExitedWithCode")} ${code}: ${stderr}`),
+          );
+        }
       }
     });
   });

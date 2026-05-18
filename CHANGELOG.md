@@ -6,6 +6,8 @@
 - 新增 yt-dlp 自动版本检查，启动时后台静默更新至最新版
 - 下载出错时新增"复制错误"按钮，方便用户复制完整错误信息反馈问题
 - 优化错误提示，区分文件不存在（ENOENT）与权限不足（EACCES）两种情况
+- 修复下载 Twitter / X 视频时因 SSL 握手异常（UNEXPECTED_EOF）导致的失败，遇到 SSL 错误时自动重试
+- 修复 yt-dlp 下载与版本检查中的 SSL 兼容性问题，并补全 307 / 308 重定向支持
 
 ---
 
@@ -13,6 +15,8 @@
 - Added automatic yt-dlp version check; silently updates to the latest version on startup
 - Added "Copy Error" button on failed download items for easier bug reporting
 - Improved error messages to distinguish between missing binary (ENOENT) and permission denied (EACCES)
+- Fixed SSL handshake failure (UNEXPECTED_EOF) when downloading Twitter / X videos; now automatically retries with SSL verification relaxed
+- Fixed SSL compatibility in yt-dlp download and version check requests; added support for 307 / 308 redirects
 
 ## 2.1.0
 
