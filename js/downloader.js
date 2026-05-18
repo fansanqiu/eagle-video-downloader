@@ -22,9 +22,13 @@ function execYtDlp(args, onProgress, onOutput) {
       return;
     }
 
-    const proc = spawn(ytdlp, args, {
-      cwd: BIN_DIR,
-    });
+    let proc;
+    try {
+      proc = spawn(ytdlp, args, { cwd: BIN_DIR });
+    } catch (error) {
+      reject(new Error(`${i18next.t("error.failedToExecuteYtdlp")}: ${error.message}`));
+      return;
+    }
 
     let stdout = "";
     let stderr = "";
@@ -70,7 +74,13 @@ function execYtDlp(args, onProgress, onOutput) {
     });
 
     proc.on("error", (error) => {
-      reject(new Error(`${i18next.t("error.failedToExecuteYtdlp")}: ${error.message}`));
+      let detail = error.message;
+      if (error.code === "ENOENT") {
+        detail = i18next.t("error.ytdlpNotFound") + " (ENOENT)";
+      } else if (error.code === "EACCES") {
+        detail = i18next.t("error.ytdlpPermissionDenied") + " (EACCES)";
+      }
+      reject(new Error(`${i18next.t("error.failedToExecuteYtdlp")}: ${detail}`));
     });
 
     proc.on("close", (code) => {

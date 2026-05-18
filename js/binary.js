@@ -204,19 +204,95 @@ async function downloadYtDlp(onProgress) {
     }
 
     const destPath = getYtDlpPath();
+    const downloadUrl = await getYtDlpDownloadUrl();
+    await downloadFile(downloadUrl, destPath, onProgress);
+
+    if (os.platform() !== 'win32') {
+        fs.chmodSync(destPath, '755');
+    }
+
+    // 清除 macOS 隔离属性，否则系统可能阻止执行
+    if (os.platform() === 'darwin') {
+        try {
+            const { execFileSync } = require('child_process');
+            execFileSync('xattr', ['-d', 'com.apple.quarantine', destPath], { stdio: 'ignore' });
+        } catch (e) {
+            // 属性不存在时 xattr 会报错，忽略即可
+        }
+    }
+
+    return destPath;
+}
+
+/**
+ * 获取已安装的 yt-dlp 版本号
+ * 返回版本字符串（如 "2024.11.18"），无法运行时返回 null
+ */
+function getInstalledYtDlpVersion() {
+    return new Promise((resolve) => {
+        const ytdlp = getYtDlpPath();
+        if (!fs.existsSync(ytdlp)) {
+            resolve(null);
+            return;
+        }
+        const { spawn } = require('child_process');
+        const proc = spawn(ytdlp, ['--version']);
+        let output = '';
+        proc.stdout.on('data', (d) => { output += d.toString(); });
+        proc.on('close', () => resolve(output.trim() || null));
+        proc.on('error', () => resolve(null));
+    });
+}
+
+/**
+ * 从 GitHub 获取最新 yt-dlp 的版本号（tag_name）
+ */
+function getLatestYtDlpVersion() {
+    return new Promise((resolve, reject) => {
+        const options = {
+            hostname: 'api.github.com',
+            path: '/repos/yt-dlp/yt-dlp/releases/latest',
+            headers: { 'User-Agent': 'Eagle-Video-Downloader' }
+        };
+        https.get(options, (response) => {
+            let data = '';
+            response.on('data', (chunk) => { data += chunk; });
+            response.on('end', () => {
+                try {
+                    resolve(JSON.parse(data).tag_name);
+                } catch (e) {
+                    reject(e);
+                }
+            });
+        }).on('error', reject);
+    });
+}
+
+/**
+ * 检查 yt-dlp 是否需要更新，如需要则重新下载
+ * - 二进制存在但无法运行 → 重新下载
+ * - 版本低于最新版 → 重新下载
+ * 返回 true 表示执行了更新，false 表示无需更新
+ */
+async function checkAndUpdateYtDlp(onProgress) {
+    const installedVersion = await getInstalledYtDlpVersion();
+
+    if (!installedVersion) {
+        // 文件存在但无法执行，重新下载
+        await downloadYtDlp(onProgress);
+        return true;
+    }
 
     try {
-        const downloadUrl = await getYtDlpDownloadUrl();
-        await downloadFile(downloadUrl, destPath, onProgress);
-
-        if (os.platform() !== 'win32') {
-            fs.chmodSync(destPath, '755');
+        const latestVersion = await getLatestYtDlpVersion();
+        if (installedVersion !== latestVersion) {
+            await downloadYtDlp(onProgress);
+            return true;
         }
-
-        return destPath;
-    } catch (error) {
-        throw error;
+    } catch (e) {
+        // 网络问题无法检查版本，跳过更新
     }
+    return false;
 }
 
 module.exports = {
@@ -224,5 +300,6 @@ module.exports = {
     getYtDlpPath,
     getFfmpegPath,
     isYtDlpInstalled,
-    downloadYtDlp
+    downloadYtDlp,
+    checkAndUpdateYtDlp,
 };

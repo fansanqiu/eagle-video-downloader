@@ -39,6 +39,7 @@
     "error": "下载失败",
     "retry": "重试",
     "copyUrl": "复制链接",
+    "copyError": "复制错误",
     "copied": "已复制"
   },
   "download": {
@@ -61,6 +62,8 @@
     "untitledVideo": "未命名视频",
     "downloadedVideo": "已下载视频",
     "ytdlpNotInstalled": "yt-dlp 未安装",
+    "ytdlpNotFound": "找不到 yt-dlp 执行文件，请重启插件重新下载",
+    "ytdlpPermissionDenied": "yt-dlp 没有执行权限，请重启插件修复",
     "failedToExecuteYtdlp": "执行 yt-dlp 失败",
     "ytdlpExitedWithCode": "yt-dlp 退出，代码",
     "unknown": "未知"

@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.2.0
+
+- 修复 macOS 下 yt-dlp 因系统隔离属性（quarantine）导致无法执行的问题
+- 新增 yt-dlp 自动版本检查，启动时后台静默更新至最新版
+- 下载出错时新增"复制错误"按钮，方便用户复制完整错误信息反馈问题
+- 优化错误提示，区分文件不存在（ENOENT）与权限不足（EACCES）两种情况
+
+---
+
+- Fixed yt-dlp execution failure on macOS caused by system quarantine attribute
+- Added automatic yt-dlp version check; silently updates to the latest version on startup
+- Added "Copy Error" button on failed download items for easier bug reporting
+- Improved error messages to distinguish between missing binary (ENOENT) and permission denied (EACCES)
+
 ## 2.1.0
 
 - 移除运行时下载 ffmpeg 的逻辑，改为直接使用 Eagle 内置 ffmpeg

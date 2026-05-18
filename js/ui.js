@@ -163,6 +163,7 @@ function createQueueItemEl(item) {
       <span class="item-meta">${escapeHtml(getMetaText(item))}</span>
       <div class="item-actions ${item.state === "error" ? "" : "hidden"}">
         <button class="item-action-btn" data-action="retry" data-id="${item.id}">${i18next.t("queue.retry")}</button>
+        <button class="item-action-btn" data-action="copyError" data-id="${item.id}" id="copy-error-btn-${item.id}">${i18next.t("queue.copyError")}</button>
         <button class="item-action-btn" data-action="copy" data-id="${item.id}" id="copy-btn-${item.id}">${i18next.t("queue.copyUrl")}</button>
       </div>
     </div>
@@ -194,16 +195,25 @@ function updateQueueItem(id, data) {
 }
 
 /**
- * 显示"已复制"反馈
+ * 显示"已复制"反馈（复制链接按钮）
  */
 function showCopiedFeedback(id) {
   const btn = document.getElementById(`copy-btn-${id}`);
   if (!btn) return;
   const original = btn.textContent;
   btn.textContent = i18next.t("queue.copied");
-  setTimeout(() => {
-    btn.textContent = original;
-  }, 1500);
+  setTimeout(() => { btn.textContent = original; }, 1500);
+}
+
+/**
+ * 显示"已复制"反馈（复制错误按钮）
+ */
+function showCopiedErrorFeedback(id) {
+  const btn = document.getElementById(`copy-error-btn-${id}`);
+  if (!btn) return;
+  const original = btn.textContent;
+  btn.textContent = i18next.t("queue.copied");
+  setTimeout(() => { btn.textContent = original; }, 1500);
 }
 
 /**
@@ -251,4 +261,5 @@ module.exports = {
   appendQueueItem,
   updateQueueItem,
   showCopiedFeedback,
+  showCopiedErrorFeedback,
 };

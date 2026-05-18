@@ -4,7 +4,7 @@
  */
 
 const i18next = require("i18next");
-const { isYtDlpInstalled, downloadYtDlp } = require("./binary");
+const { isYtDlpInstalled, downloadYtDlp, checkAndUpdateYtDlp } = require("./binary");
 const downloader = require("./downloader");
 const eagleApi = require("./eagle");
 const ui = require("./ui");
@@ -99,6 +99,7 @@ function setupEventListeners() {
     const action = btn.dataset.action;
     const id = parseInt(btn.dataset.id);
     if (action === "retry") retryDownload(id);
+    if (action === "copyError") copyError(id);
     if (action === "copy") copyUrl(id);
   });
 }
@@ -111,6 +112,8 @@ async function initializeBinaries() {
   if (isYtDlpInstalled()) {
     isInitialized = true;
     initializeMainUI();
+    // 后台静默检查并更新 yt-dlp
+    checkAndUpdateYtDlp().catch(() => {});
     return;
   }
 
@@ -238,6 +241,20 @@ function retryDownload(id) {
   item.speed = "";
   ui.updateQueueItem(item.id, item);
   processQueue();
+}
+
+/**
+ * 复制下载任务的错误信息
+ */
+async function copyError(id) {
+  const item = downloadQueue.find((item) => item.id === id);
+  if (!item || !item.error) return;
+  try {
+    await navigator.clipboard.writeText(item.error);
+    ui.showCopiedErrorFeedback(id);
+  } catch (error) {
+    console.error("Failed to copy error:", error);
+  }
 }
 
 /**

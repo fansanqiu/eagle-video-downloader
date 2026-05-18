@@ -1,12 +1,13 @@
 {
   "name": "eagle-video-downloader",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Eagle plugin for downloading videos from 1000+ websites using yt-dlp",
   "main": "js/plugin.js",
   "scripts": {
     "build": "node esbuild.config.js",
     "dev": "node esbuild.config.js --watch",
-    "prepublish": "npm run build && rm -rf Plugin/bin/"
+    "prepublish": "npm run build && rm -rf Plugin/bin/",
+    "package": "npm run build && rm -rf Plugin/bin/ && cd Plugin && zip -r ../视频下载器.eagleplugin ."
   },
   "dependencies": {
     "i18next": "^25.8.19"

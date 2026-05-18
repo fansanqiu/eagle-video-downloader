@@ -39,6 +39,7 @@
     "error": "Download failed",
     "retry": "Retry",
     "copyUrl": "Copy URL",
+    "copyError": "Copy Error",
     "copied": "Copied!"
   },
   "download": {
@@ -61,6 +62,8 @@
     "untitledVideo": "Untitled Video",
     "downloadedVideo": "Downloaded Video",
     "ytdlpNotInstalled": "yt-dlp not installed",
+    "ytdlpNotFound": "yt-dlp executable not found, please restart the plugin to re-download",
+    "ytdlpPermissionDenied": "yt-dlp has no execute permission, please restart the plugin to fix",
     "failedToExecuteYtdlp": "Failed to execute yt-dlp",
     "ytdlpExitedWithCode": "yt-dlp exited with code",
     "unknown": "Unknown"
