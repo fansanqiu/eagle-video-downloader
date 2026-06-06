@@ -63,12 +63,48 @@
     "downloadedVideo": "已下载视频",
     "ytdlpNotInstalled": "yt-dlp 未安装",
     "ytdlpNotFound": "找不到 yt-dlp 执行文件，请重启插件重新下载",
-    "ytdlpPermissionDenied": "yt-dlp 没有执行权限，请重启插件修复",
+    "ytdlpPermissionDenied": "yt-dlp 没有执行权限",
     "failedToExecuteYtdlp": "执行 yt-dlp 失败",
     "ytdlpExitedWithCode": "yt-dlp 退出，代码",
     "unknown": "未知"
   },
   "progress": {
     "remaining": "剩余"
+  },
+  "update": {
+    "available": "发现新版本 yt-dlp ({{version}})",
+    "clickToUpdate": "更新",
+    "updating": "正在更新... {{percent}}%",
+    "done": "✓ 已更新至最新版"
+  },
+  "deps": {
+    "title": "依赖管理",
+    "back": "← 返回",
+    "ytdlpDesc": "视频解析与下载引擎",
+    "ffmpegDesc": "视频合并与转码引擎",
+    "ffmpegManaged": "由 Eagle 管理，无需手动操作",
+    "ffmpegNotFoundHint": "未找到 Eagle 内置版本，可点击下方按钮独立安装",
+    "ffmpegUnsupported": "当前平台暂不支持自动安装，请更新 Eagle 至最新版以获取 ffmpeg",
+    "checking": "◌ 检查中...",
+    "installed": "✓ 已安装",
+    "checkingUpdate": "检查更新中...",
+    "latest": "✓ 已是最新版",
+    "outdated": "↑ 有新版本",
+    "missing": "✗ 未安装",
+    "eagleBuiltin": "✓ Eagle 内置",
+    "notFound": "✗ 未找到",
+    "installing": "⟳ 安装中...",
+    "updating": "⟳ 更新中...",
+    "reinstalling": "⟳ 重装中...",
+    "doneInstalled": "✓ 安装完成",
+    "doneUpdated": "✓ 更新完成",
+    "doneReinstalled": "✓ 重装完成",
+    "install": "安装",
+    "update": "更新",
+    "reinstall": "重装",
+    "uninstall": "卸载",
+    "versionInstalled": "版本：{{version}}",
+    "versionUpdate": "{{from}}  →  {{to}}",
+    "progressText": "正在下载... {{percent}}%"
   }
 }

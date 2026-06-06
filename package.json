@@ -1,6 +1,6 @@
 {
   "name": "eagle-video-downloader",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Eagle plugin for downloading videos from 1000+ websites using yt-dlp",
   "main": "js/plugin.js",
   "scripts": {

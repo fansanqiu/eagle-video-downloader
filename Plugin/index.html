@@ -378,6 +378,271 @@
       color: var(--fg1);
     }
 
+    /* Header icon button (shared) */
+    .btn-icon {
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--fg1);
+      opacity: 0.45;
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+    }
+
+    .btn-icon:hover {
+      opacity: 0.9;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    /* === Deps Container === */
+    #depsContainer {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .deps-subheader {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      flex-shrink: 0;
+    }
+
+    #depsBackBtn {
+      background: none;
+      border: none;
+      color: var(--brand);
+      font-size: 12px;
+      cursor: pointer;
+      padding: 0;
+      line-height: 1;
+    }
+
+    #depsBackBtn:hover {
+      opacity: 0.8;
+    }
+
+    .deps-subheader-title {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--fg2);
+    }
+
+    .deps-list {
+      flex: 1;
+      overflow-y: auto;
+      min-height: 0;
+    }
+
+    .deps-list::-webkit-scrollbar {
+      width: 3px;
+    }
+
+    .deps-list::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .deps-list::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 2px;
+    }
+
+    .dep-card {
+      padding: 14px 16px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .dep-card + .dep-card {
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .dep-card-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .dep-info {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .dep-name {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--fg1);
+      line-height: 1.3;
+    }
+
+    .dep-desc {
+      font-size: 11px;
+      color: var(--fg2);
+    }
+
+    .dep-status {
+      font-size: 11px;
+      white-space: nowrap;
+      flex-shrink: 0;
+      line-height: 1.6;
+    }
+
+    .dep-status.checking { color: var(--fg2); }
+    .dep-status.ok       { color: var(--success); }
+    .dep-status.update   { color: #f0a830; }
+    .dep-status.missing  { color: var(--error); }
+    .dep-status.busy     { color: var(--brand); }
+
+    .dep-detail {
+      font-size: 11px;
+      color: var(--fg2);
+      min-height: 15px;
+      line-height: 1.4;
+    }
+
+    .dep-progress-wrap {
+      padding: 2px 0;
+    }
+
+    .dep-progress-bar {
+      height: 3px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .dep-progress-fill {
+      height: 100%;
+      background: var(--brand);
+      border-radius: 2px;
+      transition: width 0.3s ease;
+      width: 0%;
+    }
+
+    .dep-actions {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-top: 2px;
+      min-height: 22px;
+    }
+
+    .dep-btn {
+      background: rgba(255, 255, 255, 0.08);
+      border: none;
+      border-radius: 4px;
+      color: var(--fg2);
+      font-size: 11px;
+      padding: 3px 10px;
+      cursor: pointer;
+      line-height: 16px;
+    }
+
+    .dep-btn:hover {
+      background: rgba(255, 255, 255, 0.15);
+      color: var(--fg1);
+    }
+
+    .dep-btn.primary {
+      background: var(--brand);
+      color: #fff;
+    }
+
+    .dep-btn.primary:hover {
+      opacity: 0.88;
+    }
+
+    .dep-btn.danger:hover {
+      background: rgba(245, 108, 108, 0.15);
+      color: var(--error);
+    }
+
+    /* Update Banner */
+    #updateBanner {
+      padding: 6px 12px;
+      background: rgba(49, 151, 255, 0.08);
+      border-bottom: 1px solid rgba(49, 151, 255, 0.12);
+      flex-shrink: 0;
+    }
+
+    #updateAvailableRow {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    #updateProgressRow {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    #updateBannerText {
+      font-size: 11px;
+      color: var(--fg2);
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    #updateBannerBtn {
+      background: none;
+      border: 1px solid var(--brand);
+      border-radius: 4px;
+      color: var(--brand);
+      font-size: 11px;
+      padding: 2px 8px;
+      cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    #updateBannerBtn:hover {
+      background: rgba(49, 151, 255, 0.12);
+    }
+
+    #updateProgressText {
+      font-size: 11px;
+      color: var(--fg2);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .update-progress-bar {
+      flex: 1;
+      height: 3px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .update-progress-fill {
+      height: 100%;
+      background: var(--brand);
+      border-radius: 2px;
+      transition: width 0.3s ease;
+      width: 0%;
+    }
+
     /* Utilities */
     .hidden {
       display: none !important;
@@ -394,13 +659,67 @@
         <img src="assets/logo.png" alt="Logo" width="16" height="16" />
         <h1 id="appName" class="app-title"></h1>
       </div>
-      <div id="closeButton" class="btn-close no-drag">
-        <img src="assets/icon_x.svg" width="16" height="16" alt="Close" />
+      <div class="header-actions no-drag">
+        <button id="depsEntryBtn" class="btn-icon" title="">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="1" y="1" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.3"/>
+            <rect x="8" y="1" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.3"/>
+            <rect x="1" y="8" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.3"/>
+            <rect x="8" y="8" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.3"/>
+          </svg>
+        </button>
+        <div id="closeButton" class="btn-close">
+          <img src="assets/icon_x.svg" width="16" height="16" alt="Close" />
+        </div>
       </div>
     </header>
 
     <!-- Main Content -->
     <main>
+      <!-- Deps Container -->
+      <div id="depsContainer" class="hidden">
+        <div class="deps-subheader">
+          <button id="depsBackBtn" class="no-drag"></button>
+          <span class="deps-subheader-title"></span>
+        </div>
+        <div class="deps-list">
+          <!-- yt-dlp card -->
+          <div class="dep-card">
+            <div class="dep-card-top">
+              <div class="dep-info">
+                <span class="dep-name">yt-dlp</span>
+                <span id="ytdlpDesc" class="dep-desc"></span>
+              </div>
+              <span id="ytdlpStatus" class="dep-status checking"></span>
+            </div>
+            <div id="ytdlpDetail" class="dep-detail"></div>
+            <div id="ytdlpProgressWrap" class="dep-progress-wrap hidden">
+              <div class="dep-progress-bar">
+                <div id="ytdlpProgressFill" class="dep-progress-fill"></div>
+              </div>
+            </div>
+            <div id="ytdlpActions" class="dep-actions"></div>
+          </div>
+          <!-- ffmpeg card -->
+          <div class="dep-card">
+            <div class="dep-card-top">
+              <div class="dep-info">
+                <span class="dep-name">ffmpeg</span>
+                <span id="ffmpegDesc" class="dep-desc"></span>
+              </div>
+              <span id="ffmpegStatus" class="dep-status checking"></span>
+            </div>
+            <div id="ffmpegDetail" class="dep-detail"></div>
+            <div id="ffmpegProgressWrap" class="dep-progress-wrap hidden">
+              <div class="dep-progress-bar">
+                <div id="ffmpegProgressFill" class="dep-progress-fill"></div>
+              </div>
+            </div>
+            <div id="ffmpegActions" class="dep-actions"></div>
+          </div>
+        </div>
+      </div>
+
       <!-- Init Container -->
       <div id="initContainer" class="hidden">
         <!-- Confirm State -->
@@ -423,6 +742,19 @@
 
       <!-- Main Container -->
       <div id="mainContainer" class="hidden">
+        <!-- Update Banner -->
+        <div id="updateBanner" class="hidden">
+          <div id="updateAvailableRow">
+            <span id="updateBannerText"></span>
+            <button id="updateBannerBtn" class="no-drag"></button>
+          </div>
+          <div id="updateProgressRow" class="hidden">
+            <span id="updateProgressText"></span>
+            <div class="update-progress-bar">
+              <div id="updateProgressFill" class="update-progress-fill"></div>
+            </div>
+          </div>
+        </div>
         <div class="input-bar">
           <input type="text" id="urlInput" placeholder="" />
           <button id="addButton" class="no-drag">

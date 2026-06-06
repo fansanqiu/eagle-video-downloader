@@ -8,6 +8,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const https = require('https');
+const { spawn, execFileSync } = require('child_process');
 
 // 插件路径（__dirname 运行时指向 dist/，向上一级即 Plugin/ 根目录）
 const PLUGIN_ROOT = path.join(__dirname, '..');
@@ -38,6 +39,10 @@ function httpsGetJson(options, sslFallback = false) {
             }
         });
     });
+}
+
+function getFfmpegBinaryName() {
+    return os.platform() === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
 }
 
 /**
@@ -108,20 +113,48 @@ function getEagleFfmpegDirName() {
  * 获取 Eagle 内置 ffmpeg 的完整路径
  */
 function getEagleFfmpegPath() {
-    const binaryName = os.platform() === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
-    return path.join(getEagleDataDir(), 'Plugins', getEagleFfmpegDirName(), binaryName);
+    return path.join(getEagleDataDir(), 'Plugins', getEagleFfmpegDirName(), getFfmpegBinaryName());
+}
+
+/**
+ * 获取插件自行管理的 ffmpeg 路径（存放在 bin/ 目录下）
+ */
+function getOwnFfmpegPath() {
+    return path.join(BIN_DIR, getFfmpegBinaryName());
+}
+
+function resolveFfmpeg() {
+    const eagle = getEagleFfmpegPath();
+    if (fs.existsSync(eagle)) return { source: 'eagle', path: eagle };
+    const own = getOwnFfmpegPath();
+    if (fs.existsSync(own)) return { source: 'own', path: own };
+    return null;
+}
+
+/**
+ * 检测 ffmpeg 来源
+ * 返回 'eagle'（Eagle 内置）| 'own'（插件自管理）| null（未找到）
+ */
+function getFfmpegSource() {
+    return resolveFfmpeg()?.source ?? null;
+}
+
+/**
+ * 当前平台是否支持自动安装 ffmpeg
+ * macOS：eagle-app/eagle-plugin-ffmpeg 仓库提供 zip
+ * Windows：BtbN 静态构建提供 zip（ffmpeg.exe 单文件，无需额外 DLL）
+ */
+function canInstallFfmpeg() {
+    const p = os.platform();
+    return p === 'darwin' || p === 'win32';
 }
 
 /**
  * 获取可用的 ffmpeg 路径
- * 优先使用 Eagle 内置版本
+ * 优先 Eagle 内置，其次插件自管理
  */
 function getFfmpegPath() {
-    const eagleFfmpeg = getEagleFfmpegPath();
-    if (fs.existsSync(eagleFfmpeg)) {
-        return eagleFfmpeg;
-    }
-    return null;
+    return resolveFfmpeg()?.path ?? null;
 }
 
 /**
@@ -212,6 +245,12 @@ async function getYtDlpDownloadUrl() {
     return asset.browser_download_url;
 }
 
+function clearQuarantine(filePath) {
+    try {
+        execFileSync('xattr', ['-d', 'com.apple.quarantine', filePath], { stdio: 'ignore' });
+    } catch (e) {}
+}
+
 /**
  * 下载 yt-dlp 二进制文件
  */
@@ -230,12 +269,7 @@ async function downloadYtDlp(onProgress) {
 
     // 清除 macOS 隔离属性，否则系统可能阻止执行
     if (os.platform() === 'darwin') {
-        try {
-            const { execFileSync } = require('child_process');
-            execFileSync('xattr', ['-d', 'com.apple.quarantine', destPath], { stdio: 'ignore' });
-        } catch (e) {
-            // 属性不存在时 xattr 会报错，忽略即可
-        }
+        clearQuarantine(destPath);
     }
 
     return destPath;
@@ -252,7 +286,6 @@ function getInstalledYtDlpVersion() {
             resolve(null);
             return;
         }
-        const { spawn } = require('child_process');
         const proc = spawn(ytdlp, ['--version']);
         let output = '';
         proc.stdout.on('data', (d) => { output += d.toString(); });
@@ -300,11 +333,185 @@ async function checkAndUpdateYtDlp(onProgress) {
     return false;
 }
 
+/**
+ * 下载并安装 ffmpeg（支持 macOS / Windows）
+ *
+ * macOS 来源：eagle-app/eagle-plugin-ffmpeg（官方 zip，约 50 MB）
+ * Windows 来源：BtbN 静态 GPL 构建（ffmpeg-master-latest-win64-gpl.zip，约 80 MB）
+ *   - 静态链接，ffmpeg.exe 单文件运行，无需额外 DLL
+ *   - Windows 解压：优先 tar.exe（Win10 1803+ 内置），降级到 PowerShell Expand-Archive
+ *
+ * 流程：下载 zip → 解压到临时目录 → 递归定位二进制 → 移至 bin/ → 设置权限
+ */
+async function downloadFfmpeg(onProgress) {
+    const platform = os.platform();
+    const arch = os.arch();
+
+    let downloadUrl, zipName;
+
+    if (platform === 'darwin') {
+        zipName = arch === 'arm64'
+            ? 'eagle-ffmpeg-mac-arm64.zip'
+            : 'eagle-ffmpeg-mac-x64.zip';
+        downloadUrl = `https://github.com/eagle-app/eagle-plugin-ffmpeg/raw/main/${zipName}`;
+    } else if (platform === 'win32') {
+        // BtbN 静态 GPL 构建，ffmpeg.exe 单文件，无 DLL 依赖
+        zipName = 'ffmpeg-win-x64.zip';
+        downloadUrl = 'https://github.com/BtbN/ffmpeg-builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip';
+    } else {
+        throw new Error(`Unsupported platform for ffmpeg auto-install: ${platform}`);
+    }
+
+    if (!fs.existsSync(BIN_DIR)) {
+        fs.mkdirSync(BIN_DIR, { recursive: true });
+    }
+
+    // 下载 zip
+    const zipPath = path.join(BIN_DIR, zipName);
+    await downloadFile(downloadUrl, zipPath, onProgress);
+
+    // 解压到临时目录（避免与现有文件混淆）
+    const tmpDir = path.join(BIN_DIR, '_ffmpeg_tmp');
+    if (fs.existsSync(tmpDir)) fs.rmSync(tmpDir, { recursive: true });
+    fs.mkdirSync(tmpDir);
+
+    try {
+        if (platform === 'darwin') {
+            execFileSync('unzip', ['-o', zipPath, '-d', tmpDir], { stdio: 'ignore' });
+        } else {
+            // Windows：tar.exe（Win10 1803+ 内置）优先，降级到 PowerShell
+            try {
+                execFileSync('tar', ['-xf', zipPath, '-C', tmpDir], { stdio: 'ignore' });
+            } catch (e) {
+                execFileSync('powershell', [
+                    '-NoProfile', '-Command',
+                    `Expand-Archive -LiteralPath "${zipPath}" -DestinationPath "${tmpDir}" -Force`,
+                ], { stdio: 'ignore' });
+            }
+        }
+    } finally {
+        if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath);
+    }
+
+    // 递归查找 ffmpeg 二进制（兼容各种 zip 内部目录结构）
+    function findBinary(dir, name) {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            const fullPath = path.join(dir, entry.name);
+            if (entry.isFile() && entry.name === name) return fullPath;
+            if (entry.isDirectory()) {
+                const found = findBinary(fullPath, name);
+                if (found) return found;
+            }
+        }
+        return null;
+    }
+
+    const binaryName = getFfmpegBinaryName();
+    const foundBin = findBinary(tmpDir, binaryName);
+    if (!foundBin) {
+        fs.rmSync(tmpDir, { recursive: true });
+        throw new Error('ffmpeg binary not found in downloaded package');
+    }
+
+    // 移动到 bin/ 目录，清理临时目录
+    const destPath = getOwnFfmpegPath();
+    if (fs.existsSync(destPath)) fs.unlinkSync(destPath);
+    fs.renameSync(foundBin, destPath);
+    fs.rmSync(tmpDir, { recursive: true });
+
+    if (platform !== 'win32') {
+        fs.chmodSync(destPath, '755');
+    }
+    if (platform === 'darwin') {
+        clearQuarantine(destPath);
+    }
+
+    return destPath;
+}
+
+/**
+ * 卸载插件自管理的 ffmpeg（仅删除 bin/ 下的文件，不影响 Eagle 内置版本）
+ */
+function uninstallFfmpeg() {
+    const ffmpegPath = getOwnFfmpegPath();
+    if (fs.existsSync(ffmpegPath)) {
+        fs.unlinkSync(ffmpegPath);
+    }
+}
+
+/**
+ * 获取 Eagle 内置 ffmpeg 的版本号
+ * 返回版本字符串（如 "6.1.1"），无法运行时返回 null
+ */
+function getFfmpegVersion() {
+    return new Promise((resolve) => {
+        const ffmpegPath = getFfmpegPath();
+        if (!ffmpegPath || !fs.existsSync(ffmpegPath)) {
+            resolve(null);
+            return;
+        }
+        const proc = spawn(ffmpegPath, ['-version']);
+        let output = '';
+        proc.stdout.on('data', (d) => { output += d.toString(); });
+        proc.stderr.on('data', (d) => { output += d.toString(); });
+        proc.on('close', () => {
+            const match = output.match(/ffmpeg version (\S+)/);
+            resolve(match ? match[1] : null);
+        });
+        proc.on('error', () => resolve(null));
+    });
+}
+
+/**
+ * 卸载 yt-dlp（删除二进制文件，清理空目录）
+ */
+function uninstallYtDlp() {
+    const ytdlp = getYtDlpPath();
+    if (fs.existsSync(ytdlp)) {
+        fs.unlinkSync(ytdlp);
+    }
+    try {
+        if (fs.existsSync(BIN_DIR) && fs.readdirSync(BIN_DIR).length === 0) {
+            fs.rmdirSync(BIN_DIR);
+        }
+    } catch (e) {}
+}
+
+/**
+ * 检查是否有可用的 yt-dlp 更新，不执行下载
+ * 返回 { hasUpdate, latestVersion, installedVersion }
+ */
+async function getYtDlpUpdateInfo() {
+    const installedVersion = await getInstalledYtDlpVersion();
+    if (!installedVersion) {
+        return { hasUpdate: false, latestVersion: null, installedVersion: null };
+    }
+    try {
+        const latestVersion = await getLatestYtDlpVersion();
+        return {
+            hasUpdate: installedVersion !== latestVersion,
+            latestVersion,
+            installedVersion,
+        };
+    } catch (e) {
+        return { hasUpdate: false, latestVersion: null, installedVersion };
+    }
+}
+
 module.exports = {
     BIN_DIR,
     getYtDlpPath,
     getFfmpegPath,
+    getFfmpegVersion,
+    getFfmpegSource,
+    canInstallFfmpeg,
     isYtDlpInstalled,
     downloadYtDlp,
+    uninstallYtDlp,
+    downloadFfmpeg,
+    uninstallFfmpeg,
     checkAndUpdateYtDlp,
+    getInstalledYtDlpVersion,
+    getLatestYtDlpVersion,
+    getYtDlpUpdateInfo,
 };

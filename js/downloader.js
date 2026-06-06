@@ -22,6 +22,11 @@ function execYtDlp(args, onProgress, onOutput) {
       return;
     }
 
+    // 确保二进制文件有执行权限（文件可能因拷贝/恢复等操作丢失权限）
+    if (os.platform() !== 'win32') {
+      try { fs.chmodSync(ytdlp, '755'); } catch (e) {}
+    }
+
     let proc;
     try {
       proc = spawn(ytdlp, args, { cwd: BIN_DIR });
@@ -96,14 +101,48 @@ function execYtDlp(args, onProgress, onOutput) {
             .catch(() =>
               reject(new Error(`${i18next.t("error.ytdlpExitedWithCode")} ${code}: ${stderr}`))
             );
-        } else {
-          reject(
-            new Error(`${i18next.t("error.ytdlpExitedWithCode")} ${code}: ${stderr}`),
-          );
+          return;
         }
+
+        // BiliBili 412 时自动补充站点参数重试一次
+        const is412 = stderr.includes("HTTP Error 412");
+        const alreadyHasReferer = args.includes("--referer");
+        if (is412 && !alreadyHasReferer) {
+          const urlArg = args.find(a => a.startsWith('http'));
+          const extraArgs = urlArg ? getSiteArgs(urlArg) : [];
+          if (extraArgs.length > 0) {
+            execYtDlp([...args, ...extraArgs], onProgress, onOutput)
+              .then(resolve)
+              .catch(() =>
+                reject(new Error(`${i18next.t("error.ytdlpExitedWithCode")} ${code}: ${stderr}`))
+              );
+            return;
+          }
+        }
+
+        reject(
+          new Error(`${i18next.t("error.ytdlpExitedWithCode")} ${code}: ${stderr}`),
+        );
       }
     });
   });
+}
+
+/**
+ * 返回特定站点需要的额外 yt-dlp 参数
+ * BiliBili：补充 Referer 和 User-Agent，避免 HTTP 412
+ */
+function getSiteArgs(url) {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, '');
+    if (host === 'bilibili.com' || host === 'b23.tv') {
+      return [
+        '--referer', 'https://www.bilibili.com',
+        '--add-header', 'User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      ];
+    }
+  } catch (e) {}
+  return [];
 }
 
 /**
@@ -137,7 +176,7 @@ function normalizeUrl(url) {
  */
 async function getVideoInfo(url) {
   url = normalizeUrl(url);
-  const args = ["--dump-json", "--no-warnings", url];
+  const args = ["--dump-json", "--no-warnings", ...getSiteArgs(url), url];
 
   const output = await execYtDlp(args);
   const info = JSON.parse(output.trim().split("\n")[0]);
@@ -221,6 +260,7 @@ async function downloadVideo(url, onProgress, onStatus, preloadedInfo = null) {
     "--merge-output-format",
     "mp4",
     "--no-warnings",
+    ...getSiteArgs(url),
   ];
 
   const ffmpeg = getFfmpegPath();

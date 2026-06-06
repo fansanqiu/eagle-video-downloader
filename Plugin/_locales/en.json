@@ -63,12 +63,48 @@
     "downloadedVideo": "Downloaded Video",
     "ytdlpNotInstalled": "yt-dlp not installed",
     "ytdlpNotFound": "yt-dlp executable not found, please restart the plugin to re-download",
-    "ytdlpPermissionDenied": "yt-dlp has no execute permission, please restart the plugin to fix",
+    "ytdlpPermissionDenied": "yt-dlp has no execute permission",
     "failedToExecuteYtdlp": "Failed to execute yt-dlp",
     "ytdlpExitedWithCode": "yt-dlp exited with code",
     "unknown": "Unknown"
   },
   "progress": {
     "remaining": "Remaining"
+  },
+  "update": {
+    "available": "New yt-dlp version available ({{version}})",
+    "clickToUpdate": "Update",
+    "updating": "Updating... {{percent}}%",
+    "done": "✓ Updated to latest version"
+  },
+  "deps": {
+    "title": "Dependencies",
+    "back": "← Back",
+    "ytdlpDesc": "Video extraction & download engine",
+    "ffmpegDesc": "Video merging & transcoding engine",
+    "ffmpegManaged": "Managed by Eagle, no action needed",
+    "ffmpegNotFoundHint": "Eagle built-in not found. Click below to install independently",
+    "ffmpegUnsupported": "Auto-install not supported on this platform. Please update Eagle to get ffmpeg",
+    "checking": "◌ Checking...",
+    "installed": "✓ Installed",
+    "checkingUpdate": "Checking for updates...",
+    "latest": "✓ Up to date",
+    "outdated": "↑ Update available",
+    "missing": "✗ Not installed",
+    "eagleBuiltin": "✓ Eagle built-in",
+    "notFound": "✗ Not found",
+    "installing": "⟳ Installing...",
+    "updating": "⟳ Updating...",
+    "reinstalling": "⟳ Reinstalling...",
+    "doneInstalled": "✓ Installed",
+    "doneUpdated": "✓ Updated",
+    "doneReinstalled": "✓ Reinstalled",
+    "install": "Install",
+    "update": "Update",
+    "reinstall": "Reinstall",
+    "uninstall": "Uninstall",
+    "versionInstalled": "Version: {{version}}",
+    "versionUpdate": "{{from}}  →  {{to}}",
+    "progressText": "Downloading... {{percent}}%"
   }
 }
