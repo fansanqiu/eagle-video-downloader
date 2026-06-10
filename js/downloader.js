@@ -8,12 +8,21 @@ const fs = require("fs");
 const os = require("os");
 const { spawn } = require("child_process");
 
-const { getYtDlpPath, getFfmpegPath, BIN_DIR } = require("./binary");
+const { getYtDlpPath, getFfmpegPath, BIN_DIR, downloadYtDlp } = require("./binary");
+
+/**
+ * 判断 spawn 错误是否表示二进制文件本身已损坏（而非权限/路径问题）
+ * - EBADMACHO (macOS, errno 88)：Mach-O 文件损坏，常见于下载中断
+ * - ENOEXEC：可执行文件格式错误
+ */
+function isCorruptedBinaryError(error) {
+  return error.code === "EBADMACHO" || error.code === "ENOEXEC" || error.errno === -88;
+}
 
 /**
  * 执行 yt-dlp 命令
  */
-function execYtDlp(args, onProgress, onOutput) {
+function execYtDlp(args, onProgress, onOutput, allowRecovery = true) {
   return new Promise((resolve, reject) => {
     const ytdlp = getYtDlpPath();
 
@@ -27,10 +36,23 @@ function execYtDlp(args, onProgress, onOutput) {
       try { fs.chmodSync(ytdlp, '755'); } catch (e) {}
     }
 
+    // 二进制文件损坏时：删除并重新下载，再重试一次（仅一次，避免死循环）
+    const recoverFromCorruptBinary = (error) => {
+      try { fs.unlinkSync(ytdlp); } catch (e) {}
+      downloadYtDlp()
+        .then(() => execYtDlp(args, onProgress, onOutput, false))
+        .then(resolve)
+        .catch(() => reject(new Error(`${i18next.t("error.failedToExecuteYtdlp")}: ${error.message}`)));
+    };
+
     let proc;
     try {
       proc = spawn(ytdlp, args, { cwd: BIN_DIR });
     } catch (error) {
+      if (allowRecovery && isCorruptedBinaryError(error)) {
+        recoverFromCorruptBinary(error);
+        return;
+      }
       reject(new Error(`${i18next.t("error.failedToExecuteYtdlp")}: ${error.message}`));
       return;
     }
@@ -79,6 +101,11 @@ function execYtDlp(args, onProgress, onOutput) {
     });
 
     proc.on("error", (error) => {
+      if (allowRecovery && isCorruptedBinaryError(error)) {
+        recoverFromCorruptBinary(error);
+        return;
+      }
+
       let detail = error.message;
       if (error.code === "ENOENT") {
         detail = i18next.t("error.ytdlpNotFound") + " (ENOENT)";

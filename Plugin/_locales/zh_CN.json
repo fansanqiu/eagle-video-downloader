@@ -19,18 +19,6 @@
     "loading": "加载中...",
     "successDownload": "下载成功"
   },
-  "init": {
-    "downloading": "正在下载 yt-dlp...",
-    "downloadingYtdlp": "正在下载 yt-dlp...",
-    "complete": "初始化完成！",
-    "failed": "初始化失败",
-    "hint": "首次使用需要下载 yt-dlp，请稍候...",
-    "networkError": "初始化失败，请检查网络连接后重试",
-    "title": "首次使用：下载必要组件",
-    "componentYtdlp": "yt-dlp（视频解析引擎）",
-    "startDownload": "开始下载",
-    "downloadingComponent": "正在下载 {{name}}..."
-  },
   "queue": {
     "waiting": "等待中...",
     "preparing": "获取视频信息...",
@@ -79,6 +67,7 @@
   },
   "deps": {
     "title": "依赖管理",
+    "setupRequired": "首次使用需要先安装以下组件，安装完成后将自动进入主界面",
     "back": "← 返回",
     "ytdlpDesc": "视频解析与下载引擎",
     "ffmpegDesc": "视频合并与转码引擎",
@@ -103,8 +92,17 @@
     "update": "更新",
     "reinstall": "重装",
     "uninstall": "卸载",
+    "retry": "重试",
+    "downloadFailed": "✗ 下载失败",
     "versionInstalled": "版本：{{version}}",
     "versionUpdate": "{{from}}  →  {{to}}",
-    "progressText": "正在下载... {{percent}}%"
+    "progressText": "正在下载... {{percent}}%",
+    "sourceLabel": "下载源",
+    "sourceAuto": "自动（推荐）",
+    "sourceMirror": "镜像加速（国内网络推荐）",
+    "sourceDirect": "GitHub 直连（已配置代理/VPN）",
+    "sourceHintAuto": "优先直连 GitHub，失败后自动切换镜像加速重试",
+    "sourceHintMirror": "优先通过国内镜像加速下载，失败后回退到 GitHub 直连",
+    "sourceHintDirect": "始终直连 GitHub，不使用任何镜像，适合已配置代理/VPN 的网络环境"
   }
 }

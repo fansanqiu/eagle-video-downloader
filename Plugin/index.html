@@ -99,100 +99,6 @@
       position: relative;
     }
 
-    /* === Init Container === */
-    #initContainer {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      padding: 16px 20px;
-      gap: 0;
-    }
-
-    #initConfirm {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-
-    .init-title {
-      font-size: 13px;
-      font-weight: 500;
-      line-height: 1.4;
-      color: var(--fg1);
-    }
-
-    .init-components {
-      list-style: none;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-
-    .init-components li {
-      font-size: 12px;
-      color: var(--fg2);
-      padding-left: 14px;
-      position: relative;
-    }
-
-    .init-components li::before {
-      content: '•';
-      position: absolute;
-      left: 0;
-      color: var(--brand);
-    }
-
-    .btn-primary {
-      background: var(--brand);
-      color: #fff;
-      border: none;
-      border-radius: 8px;
-      padding: 8px 16px;
-      font-size: 13px;
-      cursor: pointer;
-      width: 100%;
-      margin-top: 4px;
-    }
-
-    .btn-primary:hover {
-      opacity: 0.9;
-    }
-
-    .btn-primary:active {
-      opacity: 0.8;
-    }
-
-    #initProgress {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    #initMessage {
-      font-size: 12px;
-      color: var(--fg2);
-    }
-
-    .init-progress-bar {
-      height: 6px;
-      background: rgba(255, 255, 255, 0.1);
-      border-radius: 3px;
-      overflow: hidden;
-    }
-
-    .init-progress-fill {
-      height: 100%;
-      background: linear-gradient(90deg, var(--brand), var(--success));
-      border-radius: 3px;
-      transition: width 0.3s ease;
-      width: 0%;
-    }
-
-    #initPercent {
-      font-size: 10px;
-      color: var(--fg2);
-    }
-
     /* === Main Container === */
     #mainContainer {
       flex: 1;
@@ -442,6 +348,52 @@
       color: var(--fg2);
     }
 
+    .deps-notice {
+      padding: 8px 12px;
+      font-size: 11px;
+      line-height: 1.4;
+      color: var(--fg2);
+      background: rgba(255, 255, 255, 0.04);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      flex-shrink: 0;
+    }
+
+    .deps-source-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      flex-shrink: 0;
+    }
+
+    .deps-source-label {
+      font-size: 11px;
+      color: var(--fg2);
+      flex-shrink: 0;
+    }
+
+    .deps-source-select {
+      font-size: 11px;
+      color: var(--fg1);
+      background: rgba(255, 255, 255, 0.06);
+      border: none;
+      border-radius: 4px;
+      padding: 3px 6px;
+      cursor: pointer;
+      max-width: 60%;
+    }
+
+    .deps-source-hint {
+      padding: 0 12px 8px;
+      font-size: 11px;
+      line-height: 1.4;
+      color: var(--fg2);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      flex-shrink: 0;
+    }
+
     .deps-list {
       flex: 1;
       overflow-y: auto;
@@ -682,6 +634,12 @@
           <button id="depsBackBtn" class="no-drag"></button>
           <span class="deps-subheader-title"></span>
         </div>
+        <p id="depsNotice" class="deps-notice hidden"></p>
+        <div class="deps-source-row">
+          <label id="depsSourceLabel" for="depsSourceSelect" class="deps-source-label"></label>
+          <select id="depsSourceSelect" class="deps-source-select no-drag"></select>
+        </div>
+        <p id="depsSourceHint" class="deps-source-hint"></p>
         <div class="deps-list">
           <!-- yt-dlp card -->
           <div class="dep-card">
@@ -717,26 +675,6 @@
             </div>
             <div id="ffmpegActions" class="dep-actions"></div>
           </div>
-        </div>
-      </div>
-
-      <!-- Init Container -->
-      <div id="initContainer" class="hidden">
-        <!-- Confirm State -->
-        <div id="initConfirm">
-          <p id="initTitle" class="init-title"></p>
-          <ul class="init-components">
-            <li id="initComponentYtdlp"></li>
-          </ul>
-          <button id="initStartBtn" class="btn-primary no-drag"></button>
-        </div>
-        <!-- Progress State -->
-        <div id="initProgress" class="hidden">
-          <p id="initMessage"></p>
-          <div class="init-progress-bar">
-            <div id="initProgressFill" class="init-progress-fill"></div>
-          </div>
-          <p id="initPercent"></p>
         </div>
       </div>
 

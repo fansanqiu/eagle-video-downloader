@@ -28,42 +28,10 @@ function updateTheme() {
 }
 
 /**
- * 显示初始化确认界面
- */
-function showInitConfirm() {
-  document.getElementById("initContainer")?.classList.remove("hidden");
-  document.getElementById("initConfirm")?.classList.remove("hidden");
-  document.getElementById("initProgress")?.classList.add("hidden");
-  document.getElementById("mainContainer")?.classList.add("hidden");
-}
-
-/**
- * 切换到下载进度界面
- */
-function showInitDownloading() {
-  document.getElementById("initConfirm")?.classList.add("hidden");
-  document.getElementById("initProgress")?.classList.remove("hidden");
-}
-
-/**
  * 显示主 UI
  */
 function showMainUI() {
-  document.getElementById("initContainer")?.classList.add("hidden");
   document.getElementById("mainContainer")?.classList.remove("hidden");
-}
-
-/**
- * 更新初始化进度显示
- */
-function updateInitStatus(message, progress) {
-  const initMessage = document.getElementById("initMessage");
-  const initProgressFill = document.getElementById("initProgressFill");
-  const initPercent = document.getElementById("initPercent");
-
-  if (initMessage) initMessage.textContent = message;
-  if (initProgressFill) initProgressFill.style.width = `${progress}%`;
-  if (initPercent) initPercent.textContent = `${Math.round(progress)}%`;
 }
 
 /**
@@ -270,28 +238,69 @@ function getUpdateBannerEls() {
 
 /**
  * 显示依赖管理页面
+ * @param {Object} opts
+ * @param {boolean} opts.gating - 是否为「门槛模式」（依赖未就绪，强制停留在此页，隐藏返回按钮）
+ * @param {'auto'|'mirror'|'direct'} opts.sourcePref - 当前下载源偏好
  */
-function showDepsPage() {
+function showDepsPage({ gating = false, sourcePref = 'auto' } = {}) {
   // 填充静态文本
   const backBtn = document.getElementById("depsBackBtn");
   const subTitle = document.querySelector(".deps-subheader-title");
+  const notice = document.getElementById("depsNotice");
   const ytdlpDesc = document.getElementById("ytdlpDesc");
   const ffmpegDesc = document.getElementById("ffmpegDesc");
+  const sourceLabel = document.getElementById("depsSourceLabel");
+  const sourceSelect = document.getElementById("depsSourceSelect");
   if (backBtn) backBtn.textContent = i18next.t("deps.back");
   if (subTitle) subTitle.textContent = i18next.t("deps.title");
+  if (notice) notice.textContent = i18next.t("deps.setupRequired");
   if (ytdlpDesc) ytdlpDesc.textContent = i18next.t("deps.ytdlpDesc");
   if (ffmpegDesc) ffmpegDesc.textContent = i18next.t("deps.ffmpegDesc");
+  if (sourceLabel) sourceLabel.textContent = i18next.t("deps.sourceLabel");
+  if (sourceSelect) {
+    sourceSelect.innerHTML = `
+      <option value="auto">${i18next.t("deps.sourceAuto")}</option>
+      <option value="mirror">${i18next.t("deps.sourceMirror")}</option>
+      <option value="direct">${i18next.t("deps.sourceDirect")}</option>
+    `;
+    sourceSelect.value = sourcePref;
+  }
+  updateDownloadSourceHint(sourcePref);
 
   document.getElementById("depsContainer")?.classList.remove("hidden");
-  document.getElementById("initContainer")?.classList.add("hidden");
   document.getElementById("mainContainer")?.classList.add("hidden");
   document.getElementById("depsEntryBtn")?.classList.add("hidden");
+  setDepsGating(gating);
+}
+
+/**
+ * 更新下载源说明文案
+ * @param {'auto'|'mirror'|'direct'} sourcePref
+ */
+function updateDownloadSourceHint(sourcePref) {
+  const hintEl = document.getElementById("depsSourceHint");
+  if (!hintEl) return;
+  const key = {
+    auto: "deps.sourceHintAuto",
+    mirror: "deps.sourceHintMirror",
+    direct: "deps.sourceHintDirect",
+  }[sourcePref] || "deps.sourceHintAuto";
+  hintEl.textContent = i18next.t(key);
+}
+
+/**
+ * 切换依赖页的「门槛模式」：隐藏/显示返回按钮，显示/隐藏强制安装提示
+ */
+function setDepsGating(gating) {
+  document.getElementById("depsBackBtn")?.classList.toggle("hidden", gating);
+  document.getElementById("depsNotice")?.classList.toggle("hidden", !gating);
 }
 
 /**
  * 隐藏依赖管理页面，恢复主界面
  */
 function hideDepsPage() {
+  setDepsGating(false);
   document.getElementById("depsContainer")?.classList.add("hidden");
   document.getElementById("mainContainer")?.classList.remove("hidden");
   document.getElementById("depsEntryBtn")?.classList.remove("hidden");
@@ -364,6 +373,15 @@ function updateYtdlpCard(state, data = {}) {
       if (detailEl) detailEl.textContent = "";
       if (actionsEl) actionsEl.innerHTML = `
         <button class="dep-btn primary" data-ytdlp-action="install">${i18next.t("deps.install")}</button>
+      `;
+      break;
+
+    case "error":
+      statusEl.classList.add("missing");
+      statusEl.textContent = i18next.t("deps.downloadFailed");
+      if (detailEl) detailEl.textContent = data.message || "";
+      if (actionsEl) actionsEl.innerHTML = `
+        <button class="dep-btn primary" data-ytdlp-action="${data.retryAction || 'install'}">${i18next.t("deps.retry")}</button>
       `;
       break;
 
@@ -454,6 +472,15 @@ function updateFfmpegCard(state, data = {}) {
       }
       break;
 
+    case "error":
+      statusEl.classList.add("missing");
+      statusEl.textContent = i18next.t("deps.downloadFailed");
+      if (detailEl) detailEl.textContent = data.message || "";
+      if (actionsEl) actionsEl.innerHTML = `
+        <button class="dep-btn primary" data-ffmpeg-action="${data.retryAction || 'install'}">${i18next.t("deps.retry")}</button>
+      `;
+      break;
+
     // 操作进行中：显示进度条
     case "busy": {
       statusEl.classList.add("busy");
@@ -532,10 +559,7 @@ function hideUpdateBanner() {
 
 module.exports = {
   updateTheme,
-  showInitConfirm,
-  showInitDownloading,
   showMainUI,
-  updateInitStatus,
   isValidUrl,
   setupInputBar,
   setInputBarState,
@@ -549,6 +573,8 @@ module.exports = {
   hideUpdateBanner,
   showDepsPage,
   hideDepsPage,
+  setDepsGating,
+  updateDownloadSourceHint,
   updateYtdlpCard,
   updateFfmpegCard,
 };

@@ -22,18 +22,23 @@ function isSSLError(err) {
     );
 }
 
-function httpsGetJson(options, sslFallback = false) {
+function httpsGetJson(options, sslFallback = false, timeoutMs = 8000) {
     return new Promise((resolve, reject) => {
         const opts = sslFallback ? { ...options, rejectUnauthorized: false } : options;
-        https.get(opts, (response) => {
+        const req = https.get(opts, (response) => {
             let data = '';
             response.on('data', (chunk) => { data += chunk; });
             response.on('end', () => {
                 try { resolve(JSON.parse(data)); } catch (e) { reject(e); }
             });
-        }).on('error', (err) => {
+            response.on('error', reject);
+        });
+        req.setTimeout(timeoutMs, () => {
+            req.destroy(new Error('Request timed out'));
+        });
+        req.on('error', (err) => {
             if (isSSLError(err) && !sslFallback) {
-                httpsGetJson(options, true).then(resolve).catch(reject);
+                httpsGetJson(options, true, timeoutMs).then(resolve).catch(reject);
             } else {
                 reject(err);
             }
@@ -157,12 +162,45 @@ function getFfmpegPath() {
     return resolveFfmpeg()?.path ?? null;
 }
 
+// 下载空闲超时：连续这么久没有任何数据传输，视为连接卡死
+const DOWNLOAD_IDLE_TIMEOUT_MS = 15000;
+// 卡死/中断后的最大自动重试次数
+const DOWNLOAD_MAX_RETRIES = 2;
+
 /**
  * 下载文件并显示进度
+ * - 先下载到临时文件 `${destPath}.download`，成功后再原子替换 destPath，
+ *   避免「更新/重装」时下载失败把当前可用的旧二进制一并删除
+ * - 空闲超时：连接建立后若长时间收不到数据（中途断流但未收到 FIN/RST），主动中断
+ * - 失败（超时 / 连接中断 / SSL 错误）时自动重试，重试耗尽后清理临时文件并 reject，destPath 保持不变
  */
-function downloadFile(url, destPath, onProgress, sslFallback = false) {
+function downloadFile(url, destPath, onProgress, sslFallback = false, retriesLeft = DOWNLOAD_MAX_RETRIES, idleTimeoutMs = DOWNLOAD_IDLE_TIMEOUT_MS) {
     return new Promise((resolve, reject) => {
-        const file = fs.createWriteStream(destPath);
+        const tmpPath = `${destPath}.download`;
+        const file = fs.createWriteStream(tmpPath);
+        let settled = false;
+
+        const cleanupFile = () => {
+            file.close();
+            if (fs.existsSync(tmpPath)) {
+                try { fs.unlinkSync(tmpPath); } catch (e) {}
+            }
+        };
+
+        const handleFailure = (error) => {
+            if (settled) return;
+            settled = true;
+            request.destroy();
+            cleanupFile();
+
+            if (isSSLError(error) && !sslFallback) {
+                downloadFile(url, destPath, onProgress, true, retriesLeft, idleTimeoutMs).then(resolve).catch(reject);
+            } else if (retriesLeft > 0) {
+                downloadFile(url, destPath, onProgress, sslFallback, retriesLeft - 1, idleTimeoutMs).then(resolve).catch(reject);
+            } else {
+                reject(error);
+            }
+        };
 
         let reqOptions = url;
         if (sslFallback) {
@@ -178,17 +216,17 @@ function downloadFile(url, destPath, onProgress, sslFallback = false) {
         const request = https.get(reqOptions, (response) => {
             // 处理重定向（301/302/307/308）
             if ([301, 302, 307, 308].includes(response.statusCode)) {
-                file.close();
-                fs.unlinkSync(destPath);
-                downloadFile(response.headers.location, destPath, onProgress, sslFallback)
+                settled = true;
+                cleanupFile();
+                downloadFile(response.headers.location, destPath, onProgress, sslFallback, retriesLeft, idleTimeoutMs)
                     .then(resolve)
                     .catch(reject);
                 return;
             }
 
             if (response.statusCode !== 200) {
-                file.close();
-                fs.unlinkSync(destPath);
+                settled = true;
+                cleanupFile();
                 reject(new Error(`Download failed with status ${response.statusCode}`));
                 return;
             }
@@ -203,26 +241,76 @@ function downloadFile(url, destPath, onProgress, sslFallback = false) {
                 }
             });
 
+            response.on('error', handleFailure);
+
             response.pipe(file);
 
             file.on('finish', () => {
-                file.close();
-                resolve(destPath);
+                if (settled) return;
+                settled = true;
+                file.close(() => {
+                    try {
+                        fs.renameSync(tmpPath, destPath);
+                        resolve(destPath);
+                    } catch (e) {
+                        if (fs.existsSync(tmpPath)) {
+                            try { fs.unlinkSync(tmpPath); } catch (_) {}
+                        }
+                        reject(e);
+                    }
+                });
             });
+
+            file.on('error', handleFailure);
         });
 
-        request.on('error', (error) => {
-            file.close();
-            if (fs.existsSync(destPath)) {
-                fs.unlinkSync(destPath);
-            }
-            if (isSSLError(error) && !sslFallback) {
-                downloadFile(url, destPath, onProgress, true).then(resolve).catch(reject);
-            } else {
-                reject(error);
-            }
+        // 空闲超时：收不到响应头或数据传输中途停滞都会触发
+        request.setTimeout(idleTimeoutMs, () => {
+            handleFailure(new Error('Download timed out: no data received'));
         });
+
+        request.on('error', handleFailure);
     });
+}
+
+// GitHub 加速镜像，按顺序依次尝试（前缀 + 完整原始 URL）
+const GITHUB_MIRRORS = [
+    'https://gh-proxy.com/',
+    'https://ghfast.top/',
+];
+
+// 镜像下载的重试次数与空闲超时（更短，避免在不可用的镜像上耗时过久）
+const MIRROR_MAX_RETRIES = 1;
+const MIRROR_IDLE_TIMEOUT_MS = 12000;
+
+/**
+ * 依次尝试各个 GitHub 加速镜像下载文件，全部失败则 reject
+ */
+function downloadViaMirrors(url, destPath, onProgress, mirrorIndex = 0) {
+    if (mirrorIndex >= GITHUB_MIRRORS.length) {
+        return Promise.reject(new Error('All mirrors failed'));
+    }
+    const mirrorUrl = GITHUB_MIRRORS[mirrorIndex] + url;
+    return downloadFile(mirrorUrl, destPath, onProgress, false, MIRROR_MAX_RETRIES, MIRROR_IDLE_TIMEOUT_MS)
+        .catch(() => downloadViaMirrors(url, destPath, onProgress, mirrorIndex + 1));
+}
+
+/**
+ * 根据下载源偏好下载文件
+ * - 'auto'（默认）：优先直连 GitHub，失败后依次尝试镜像
+ * - 'mirror'：优先依次尝试镜像，全部失败后再尝试直连 GitHub
+ * - 'direct'：仅直连 GitHub，不使用镜像
+ */
+function downloadWithSource(url, destPath, onProgress, sourcePref = 'auto') {
+    if (sourcePref === 'direct') {
+        return downloadFile(url, destPath, onProgress);
+    }
+    if (sourcePref === 'mirror') {
+        return downloadViaMirrors(url, destPath, onProgress)
+            .catch(() => downloadFile(url, destPath, onProgress));
+    }
+    return downloadFile(url, destPath, onProgress)
+        .catch(() => downloadViaMirrors(url, destPath, onProgress));
 }
 
 /**
@@ -233,16 +321,18 @@ async function getYtDlpDownloadUrl() {
     if (binaryName === 'yt-dlp') {
         throw new Error(`Unsupported platform: ${os.platform()}`);
     }
-    const release = await httpsGetJson({
-        hostname: 'api.github.com',
-        path: '/repos/yt-dlp/yt-dlp/releases/latest',
-        headers: { 'User-Agent': 'Eagle-Video-Downloader' },
-    });
-    const asset = release.assets.find(a => a.name === binaryName);
-    if (!asset) {
-        throw new Error(`Binary ${binaryName} not found in release`);
+    try {
+        const release = await httpsGetJson({
+            hostname: 'api.github.com',
+            path: '/repos/yt-dlp/yt-dlp/releases/latest',
+            headers: { 'User-Agent': 'Eagle-Video-Downloader' },
+        });
+        const asset = release.assets.find(a => a.name === binaryName);
+        if (asset) return asset.browser_download_url;
+    } catch (e) {
+        // api.github.com 不可达时，回退到无需 API 的固定下载链接
     }
-    return asset.browser_download_url;
+    return `https://github.com/yt-dlp/yt-dlp/releases/latest/download/${binaryName}`;
 }
 
 function clearQuarantine(filePath) {
@@ -253,15 +343,17 @@ function clearQuarantine(filePath) {
 
 /**
  * 下载 yt-dlp 二进制文件
+ * @param {Function} onProgress 进度回调
+ * @param {'auto'|'mirror'|'direct'} sourcePref 下载源偏好
  */
-async function downloadYtDlp(onProgress) {
+async function downloadYtDlp(onProgress, sourcePref = 'auto') {
     if (!fs.existsSync(BIN_DIR)) {
         fs.mkdirSync(BIN_DIR, { recursive: true });
     }
 
     const destPath = getYtDlpPath();
     const downloadUrl = await getYtDlpDownloadUrl();
-    await downloadFile(downloadUrl, destPath, onProgress);
+    await downloadWithSource(downloadUrl, destPath, onProgress, sourcePref);
 
     if (os.platform() !== 'win32') {
         fs.chmodSync(destPath, '755');
@@ -342,8 +434,10 @@ async function checkAndUpdateYtDlp(onProgress) {
  *   - Windows 解压：优先 tar.exe（Win10 1803+ 内置），降级到 PowerShell Expand-Archive
  *
  * 流程：下载 zip → 解压到临时目录 → 递归定位二进制 → 移至 bin/ → 设置权限
+ * @param {Function} onProgress 进度回调
+ * @param {'auto'|'mirror'|'direct'} sourcePref 下载源偏好
  */
-async function downloadFfmpeg(onProgress) {
+async function downloadFfmpeg(onProgress, sourcePref = 'auto') {
     const platform = os.platform();
     const arch = os.arch();
 
@@ -368,7 +462,7 @@ async function downloadFfmpeg(onProgress) {
 
     // 下载 zip
     const zipPath = path.join(BIN_DIR, zipName);
-    await downloadFile(downloadUrl, zipPath, onProgress);
+    await downloadWithSource(downloadUrl, zipPath, onProgress, sourcePref);
 
     // 解压到临时目录（避免与现有文件混淆）
     const tmpDir = path.join(BIN_DIR, '_ffmpeg_tmp');

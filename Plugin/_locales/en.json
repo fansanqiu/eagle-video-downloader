@@ -19,18 +19,6 @@
     "loading": "Loading...",
     "successDownload": "Successful download"
   },
-  "init": {
-    "downloading": "Downloading yt-dlp...",
-    "downloadingYtdlp": "Downloading yt-dlp...",
-    "complete": "Initialization complete!",
-    "failed": "Initialization failed",
-    "hint": "First-time setup requires downloading yt-dlp, please wait...",
-    "networkError": "Initialization failed. Please check your network connection.",
-    "title": "First-time setup: downloading required component",
-    "componentYtdlp": "yt-dlp (video extraction engine)",
-    "startDownload": "Download",
-    "downloadingComponent": "Downloading {{name}}..."
-  },
   "queue": {
     "waiting": "Waiting...",
     "preparing": "Fetching video info...",
@@ -79,6 +67,7 @@
   },
   "deps": {
     "title": "Dependencies",
+    "setupRequired": "These components are required for first-time use. The main view will open automatically once setup is complete.",
     "back": "← Back",
     "ytdlpDesc": "Video extraction & download engine",
     "ffmpegDesc": "Video merging & transcoding engine",
@@ -103,8 +92,17 @@
     "update": "Update",
     "reinstall": "Reinstall",
     "uninstall": "Uninstall",
+    "retry": "Retry",
+    "downloadFailed": "✗ Download failed",
     "versionInstalled": "Version: {{version}}",
     "versionUpdate": "{{from}}  →  {{to}}",
-    "progressText": "Downloading... {{percent}}%"
+    "progressText": "Downloading... {{percent}}%",
+    "sourceLabel": "Download Source",
+    "sourceAuto": "Automatic (Recommended)",
+    "sourceMirror": "Mirror (Recommended for Mainland China)",
+    "sourceDirect": "GitHub Direct (if using a proxy/VPN)",
+    "sourceHintAuto": "Connects to GitHub directly first, automatically retrying via mirrors if it fails",
+    "sourceHintMirror": "Tries mirrors first for faster downloads in Mainland China, falling back to GitHub directly if needed",
+    "sourceHintDirect": "Always connects to GitHub directly without using any mirror — best if you already use a proxy/VPN"
   }
 }
