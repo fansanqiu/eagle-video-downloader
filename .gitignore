@@ -2,8 +2,10 @@
 node_modules/
 
 # Build output
-Plugin/dist/
-dist/
+# 注意：Plugin/dist/plugin.js 需随仓库提交，以便 clone 后可直接导入 Plugin 文件夹
+# （Eagle 通过 index.html 加载 dist/plugin.js，缺失会导致界面空白卡死）
+# 用 /dist/ 仅忽略根目录构建产物，不波及 Plugin/dist/
+/dist/
 
 # Binary files (downloaded at runtime)
 Plugin/bin/

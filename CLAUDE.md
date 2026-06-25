@@ -15,6 +15,14 @@ npm run package   # 打包为 视频下载器.eagleplugin（构建 + 清理 bin/
 
 打包时直接运行 `npm run package`，会在项目根目录生成 `视频下载器.eagleplugin`，即可上传发布。
 
+## dist 构建产物随仓库提交
+
+`Plugin/dist/plugin.js` 是构建产物，但**已纳入版本控制**（不再 gitignore）。原因：Eagle 通过 `Plugin/index.html` 的 `<script src="dist/plugin.js">` 加载主逻辑，若 clone 后未构建就直接把 `Plugin/` 文件夹导入 Eagle，该文件缺失会导致脚本不执行、`#mainContainer`/`#depsContainer` 一直隐藏，窗口空白卡死。提交 dist 后，clone 完即可直接导入 `Plugin/` 文件夹。
+
+代价：**每次改动 `js/` 源码后必须重新 `npm run build` 并提交更新后的 `dist/plugin.js`**，否则仓库内 dist 会与源码不同步。
+
+`index.html` 末尾已加入兜底：dist/plugin.js 加载失败时显示明确提示而非空白卡死。
+
 ## 架构
 
 源码在 `js/`，esbuild 将其打包为 `Plugin/dist/plugin.js`。UI 定义在 `Plugin/index.html`（内联 CSS）。Eagle 以 `Plugin/` 为根目录加载插件，运行时 `__dirname` 指向 `Plugin/dist/`。

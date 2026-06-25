@@ -600,7 +600,9 @@
       display: none !important;
     }
   </style>
-  <script type="text/javascript" src="dist/plugin.js"></script>
+  <script>window.__pluginScriptLoadFailed = false;</script>
+  <script type="text/javascript" src="dist/plugin.js"
+    onerror="window.__pluginScriptLoadFailed = true;"></script>
 </head>
 
 <body>
@@ -703,7 +705,28 @@
         <div class="download-list"></div>
       </div>
     </main>
+
+    <!-- 加载失败兜底：dist/plugin.js 缺失（如 clone 后未构建）时显示提示，避免空白卡死 -->
+    <div id="loadErrorOverlay" class="hidden" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:20px;text-align:center;background:var(--bg1);color:var(--fg1);">
+      <div style="font-size:13px;font-weight:600;">插件核心文件缺失 / Plugin core file missing</div>
+      <div style="font-size:12px;color:var(--fg2);line-height:1.5;">
+        未找到 dist/plugin.js。请先在项目根目录运行<br />
+        <code style="color:var(--brand);">npm install &amp;&amp; npm run build</code><br />
+        再重新导入，或直接导入打包好的 .eagleplugin 文件。
+      </div>
+    </div>
   </div>
+
+  <script>
+    // 若 dist/plugin.js 加载失败，主逻辑不会运行，#mainContainer/#depsContainer
+    // 会一直保持隐藏，窗口表现为空白卡死。此处检测并显示明确提示。
+    document.addEventListener("DOMContentLoaded", function () {
+      if (window.__pluginScriptLoadFailed) {
+        var overlay = document.getElementById("loadErrorOverlay");
+        if (overlay) overlay.classList.remove("hidden");
+      }
+    });
+  </script>
 </body>
 
 </html>
