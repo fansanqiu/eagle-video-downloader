@@ -2455,7 +2455,7 @@ var require_binary = __commonJS({
     var path = require("path");
     var fs = require("fs");
     var os = require("os");
-    var https = require("https");
+    var https2 = require("https");
     var { spawn, execFileSync } = require("child_process");
     var PLUGIN_ROOT = path.join(__dirname, "..");
     var BIN_DIR = path.join(PLUGIN_ROOT, "bin");
@@ -2465,7 +2465,7 @@ var require_binary = __commonJS({
     function httpsGetJson(options, sslFallback = false, timeoutMs = 8e3) {
       return new Promise((resolve, reject) => {
         const opts = sslFallback ? { ...options, rejectUnauthorized: false } : options;
-        const req = https.get(opts, (response) => {
+        const req = https2.get(opts, (response) => {
           let data = "";
           response.on("data", (chunk) => {
             data += chunk;
@@ -2602,7 +2602,7 @@ var require_binary = __commonJS({
             rejectUnauthorized: false
           };
         }
-        const request = https.get(reqOptions, (response) => {
+        const request = https2.get(reqOptions, (response) => {
           if ([301, 302, 307, 308].includes(response.statusCode)) {
             settled = true;
             cleanupFile();
@@ -2908,6 +2908,7 @@ var require_downloader = __commonJS({
     var fs = require("fs");
     var os = require("os");
     var { spawn } = require("child_process");
+    var i18next3 = require_i18next();
     var { getYtDlpPath, getFfmpegPath, BIN_DIR, downloadYtDlp: downloadYtDlp2 } = require_binary();
     function isCorruptedBinaryError(error) {
       return error.code === "EBADMACHO" || error.code === "ENOEXEC" || error.errno === -88;
@@ -2916,7 +2917,7 @@ var require_downloader = __commonJS({
       return new Promise((resolve, reject) => {
         const ytdlp = getYtDlpPath();
         if (!fs.existsSync(ytdlp)) {
-          reject(new Error(i18next.t("error.ytdlpNotInstalled")));
+          reject(new Error(i18next3.t("error.ytdlpNotInstalled")));
           return;
         }
         if (os.platform() !== "win32") {
@@ -2930,7 +2931,7 @@ var require_downloader = __commonJS({
             fs.unlinkSync(ytdlp);
           } catch (e) {
           }
-          downloadYtDlp2().then(() => execYtDlp(args, onProgress, onOutput, false)).then(resolve).catch(() => reject(new Error(`${i18next.t("error.failedToExecuteYtdlp")}: ${error.message}`)));
+          downloadYtDlp2().then(() => execYtDlp(args, onProgress, onOutput, false)).then(resolve).catch(() => reject(new Error(`${i18next3.t("error.failedToExecuteYtdlp")}: ${error.message}`)));
         };
         let proc;
         try {
@@ -2940,7 +2941,7 @@ var require_downloader = __commonJS({
             recoverFromCorruptBinary(error);
             return;
           }
-          reject(new Error(`${i18next.t("error.failedToExecuteYtdlp")}: ${error.message}`));
+          reject(new Error(`${i18next3.t("error.failedToExecuteYtdlp")}: ${error.message}`));
           return;
         }
         let stdout = "";
@@ -2977,11 +2978,11 @@ var require_downloader = __commonJS({
           }
           let detail = error.message;
           if (error.code === "ENOENT") {
-            detail = i18next.t("error.ytdlpNotFound") + " (ENOENT)";
+            detail = i18next3.t("error.ytdlpNotFound") + " (ENOENT)";
           } else if (error.code === "EACCES") {
-            detail = i18next.t("error.ytdlpPermissionDenied") + " (EACCES)";
+            detail = i18next3.t("error.ytdlpPermissionDenied") + " (EACCES)";
           }
-          reject(new Error(`${i18next.t("error.failedToExecuteYtdlp")}: ${detail}`));
+          reject(new Error(`${i18next3.t("error.failedToExecuteYtdlp")}: ${detail}`));
         });
         proc.on("close", (code) => {
           if (code === 0) {
@@ -2991,38 +2992,187 @@ var require_downloader = __commonJS({
             const alreadySkipping = args.includes("--no-check-certificate");
             if (isSSLError && !alreadySkipping) {
               execYtDlp([...args, "--no-check-certificate"], onProgress, onOutput).then(resolve).catch(
-                () => reject(new Error(`${i18next.t("error.ytdlpExitedWithCode")} ${code}: ${stderr}`))
+                () => reject(new Error(`${i18next3.t("error.ytdlpExitedWithCode")} ${code}: ${stderr}`))
               );
               return;
             }
             const is412 = stderr.includes("HTTP Error 412");
             const alreadyHasReferer = args.includes("--referer");
             if (is412 && !alreadyHasReferer) {
-              const urlArg = args.find((a) => a.startsWith("http"));
-              const extraArgs = urlArg ? getSiteArgs(urlArg) : [];
+              const urlArg2 = args.find((a) => a.startsWith("http"));
+              const extraArgs = urlArg2 ? getSiteArgs(urlArg2) : [];
               if (extraArgs.length > 0) {
                 execYtDlp([...args, ...extraArgs], onProgress, onOutput).then(resolve).catch(
-                  () => reject(new Error(`${i18next.t("error.ytdlpExitedWithCode")} ${code}: ${stderr}`))
+                  () => reject(new Error(`${i18next3.t("error.ytdlpExitedWithCode")} ${code}: ${stderr}`))
                 );
                 return;
               }
             }
+            const isNoFormats = stderr.includes("No video formats found") || stderr.includes("[Pinterest]") || stderr.includes("login") || stderr.includes("redirect");
+            const urlArg = args.find((a) => typeof a === "string" && a.startsWith("http"));
+            const isPinterestUrl = urlArg && (urlArg.includes("pinterest.com") || urlArg.includes("pin.it"));
+            const isInstagramUrl = urlArg && urlArg.includes("instagram.com");
+            if (isNoFormats && isPinterestUrl) {
+              (async () => {
+                const alreadyTriedSource = args.some((a) => typeof a === "string" && (a.includes("instagram.com") || a.includes("youtube.com") || a.includes("vimeo.com") || a.includes("tiktok.com")));
+                let extractedSourceUrl = null;
+                if (!alreadyTriedSource) {
+                  let sourceUrl = await extractPinterestSourceUrl(urlArg);
+                  if (sourceUrl) {
+                    sourceUrl = sourceUrl.replace(/\?img_index=\d+/, "");
+                    extractedSourceUrl = sourceUrl;
+                    const oldSiteArgs = getSiteArgs(urlArg);
+                    let cleanedArgs = args.filter((a) => !oldSiteArgs.includes(a) && a !== "--cookies-from-browser" && a !== "chrome");
+                    const newSiteArgs = getSiteArgs(sourceUrl);
+                    const newArgs = cleanedArgs.map((a) => a === urlArg ? sourceUrl : a);
+                    newArgs.push(...newSiteArgs);
+                    try {
+                      const res = await execYtDlp(newArgs, onProgress, onOutput, false);
+                      resolve(res);
+                      return;
+                    } catch (e) {
+                      try {
+                        const res = await execYtDlp([...newArgs, "--cookies-from-browser", "chrome"], onProgress, onOutput, false);
+                        resolve(res);
+                        return;
+                      } catch (e2) {
+                      }
+                    }
+                  }
+                }
+                if (!extractedSourceUrl) {
+                  const alreadyTriedCookies = args.includes("--cookies-from-browser");
+                  if (!alreadyTriedCookies) {
+                    try {
+                      const res = await execYtDlp([...args, "--cookies-from-browser", "chrome"], onProgress, onOutput, false);
+                      resolve(res);
+                      return;
+                    } catch (e) {
+                    }
+                  }
+                }
+                reject(
+                  new Error(`${i18next3.t("error.ytdlpExitedWithCode")} ${code}: ${stderr}`)
+                );
+              })();
+              return;
+            }
+            if (isInstagramUrl && !args.includes("--cookies-from-browser")) {
+              execYtDlp([...args, "--cookies-from-browser", "chrome"], onProgress, onOutput, false).then(resolve).catch(
+                () => reject(new Error(`${i18next3.t("error.ytdlpExitedWithCode")} ${code}: ${stderr}`))
+              );
+              return;
+            }
             reject(
-              new Error(`${i18next.t("error.ytdlpExitedWithCode")} ${code}: ${stderr}`)
+              new Error(`${i18next3.t("error.ytdlpExitedWithCode")} ${code}: ${stderr}`)
             );
           }
         });
       });
     }
+    function fetchWithRedirect(url, maxRedirects = 5) {
+      return new Promise((resolve) => {
+        if (maxRedirects <= 0)
+          return resolve(null);
+        try {
+          const u = new URL(url);
+          const client = u.protocol === "https:" ? https : http;
+          const req = client.get(
+            url,
+            {
+              headers: {
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+              }
+            },
+            (res) => {
+              if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+                let redirectUrl = res.headers.location;
+                if (redirectUrl.startsWith("/")) {
+                  redirectUrl = `${u.protocol}//${u.host}${redirectUrl}`;
+                }
+                return fetchWithRedirect(redirectUrl, maxRedirects - 1).then(resolve);
+              }
+              let html = "";
+              res.on("data", (chunk) => html += chunk);
+              res.on("end", () => resolve(html));
+            }
+          );
+          req.on("error", () => resolve(null));
+          req.setTimeout(8e3, () => {
+            req.destroy();
+            resolve(null);
+          });
+        } catch (e) {
+          resolve(null);
+        }
+      });
+    }
+    async function fetchPageHtml(url) {
+      try {
+        if (typeof fetch === "function") {
+          const res = await fetch(url, {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            },
+            redirect: "follow"
+          });
+          if (res.status >= 200 && res.status < 400) {
+            const text = await res.text();
+            if (text && text.length > 0)
+              return text;
+          }
+        }
+      } catch (e) {
+      }
+      return await fetchWithRedirect(url);
+    }
+    async function extractPinterestSourceUrl(pinterestUrl) {
+      try {
+        const html = await fetchPageHtml(pinterestUrl);
+        if (html) {
+          const linkMatches = html.match(
+            /https?:(?:\/|\\\/)+[^\s"'<>\\]*?(?:instagram\.com|youtube\.com|vimeo\.com|tiktok\.com)[^\s"'<>\\]*/gi
+          );
+          if (linkMatches && linkMatches.length > 0) {
+            let cleanUrl = linkMatches[0].replace(/\\\/|\\/g, "/");
+            cleanUrl = cleanUrl.replace(/\\u0026/g, "&");
+            return cleanUrl;
+          }
+        }
+      } catch (e) {
+      }
+      return null;
+    }
     function getSiteArgs(url) {
       try {
-        const host = new URL(url).hostname.replace(/^www\./, "");
-        if (host === "bilibili.com" || host === "b23.tv") {
+        const host = new URL(url).hostname.replace(/^www\./, "").toLowerCase();
+        if (host === "bilibili.com" || host === "b23.tv" || host.endsWith(".bilibili.com")) {
           return [
             "--referer",
             "https://www.bilibili.com",
             "--add-header",
             "User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+          ];
+        }
+        if (host === "twitter.com" || host === "x.com" || host.endsWith(".twitter.com") || host.endsWith(".x.com")) {
+          return [
+            "--ignore-no-formats-error"
+          ];
+        }
+        if (host === "pinterest.com" || host.endsWith(".pinterest.com") || host === "pin.it") {
+          return [
+            "--referer",
+            "https://www.pinterest.com/",
+            "--add-header",
+            "User-Agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+          ];
+        }
+        if (host === "instagram.com" || host.endsWith(".instagram.com")) {
+          return [
+            "--referer",
+            "https://www.instagram.com/",
+            "--add-header",
+            "User-Agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
           ];
         }
       } catch (e) {
@@ -3046,22 +3196,68 @@ var require_downloader = __commonJS({
     }
     async function getVideoInfo(url) {
       url = normalizeUrl(url);
-      const args = ["--dump-json", "--no-warnings", ...getSiteArgs(url), url];
-      const output = await execYtDlp(args);
-      const info = JSON.parse(output.trim().split("\n")[0]);
+      let targetUrl = url;
+      const isPinterest = url.includes("pinterest.com") || url.includes("pin.it");
+      if (isPinterest) {
+        const sourceUrl = await extractPinterestSourceUrl(url);
+        if (sourceUrl) {
+          targetUrl = sourceUrl.replace(/\?img_index=\d+/, "");
+        }
+      }
+      const args = ["--dump-json", "--no-warnings", ...getSiteArgs(targetUrl), targetUrl];
+      let output;
+      try {
+        output = await execYtDlp(args);
+      } catch (err) {
+        if (isPinterest && targetUrl === url) {
+          const cookieArgs = [...args, "--cookies-from-browser", "chrome"];
+          output = await execYtDlp(cookieArgs);
+        } else {
+          throw err;
+        }
+      }
+      const lines = output.trim().split("\n").filter(Boolean);
+      let info = {};
+      for (const line of lines) {
+        try {
+          const parsed = JSON.parse(line);
+          if (parsed._type === "video" || parsed.title || parsed.playlist_title) {
+            info = parsed;
+            if (parsed.title)
+              break;
+          } else if (!info.id) {
+            info = parsed;
+          }
+        } catch (e) {
+        }
+      }
       return {
-        title: info.title || i18next.t("error.untitledVideo"),
+        title: info.title || info.playlist_title || i18next3.t("error.untitledVideo"),
         description: info.description || "",
         duration: info.duration || 0,
         thumbnail: info.thumbnail || null,
-        uploader: info.uploader || info.channel || i18next.t("error.unknown"),
-        extractor: info.extractor || i18next.t("error.unknown"),
-        webpage_url: info.webpage_url || url,
+        uploader: info.uploader || info.channel || info.playlist_uploader || i18next3.t("error.unknown"),
+        extractor: info.extractor || i18next3.t("error.unknown"),
+        webpage_url: info.webpage_url || targetUrl,
         id: info.id || null
       };
     }
     function sanitizeFilename(filename) {
-      return filename.replace(/[<>:"/\\|?*]/g, "_").replace(/\s+/g, " ").trim().slice(0, 200);
+      let str = typeof filename === "string" && filename.trim().length > 0 ? filename : "";
+      if (!str) {
+        try {
+          if (typeof i18next3 !== "undefined" && typeof i18next3.t === "function") {
+            const res = i18next3.t("error.untitledVideo");
+            if (typeof res === "string" && res.length > 0)
+              str = res;
+          }
+        } catch (e) {
+        }
+      }
+      if (!str || typeof str !== "string") {
+        str = "Untitled Video";
+      }
+      return str.replace(/[<>:"/\\|?*]/g, "_").replace(/\s+/g, " ").trim().slice(0, 200) || "Untitled Video";
     }
     function getTempDir() {
       const tempDir = path.join(os.tmpdir(), "eagle-video-downloader");
@@ -3076,45 +3272,48 @@ var require_downloader = __commonJS({
         videoInfo = preloadedInfo;
       } else {
         if (onStatus)
-          onStatus(i18next.t("download.fetchingInfo"));
+          onStatus(i18next3.t("download.fetchingInfo"));
         try {
           videoInfo = await getVideoInfo(url);
-          if (onStatus)
-            onStatus(`${i18next.t("download.foundVideo")}: ${videoInfo.title}`);
+          if (onStatus && videoInfo && videoInfo.title) {
+            const foundMsg = typeof i18next3 !== "undefined" && i18next3.t ? i18next3.t("download.foundVideo") : "Found Video";
+            onStatus(`${foundMsg}: ${videoInfo.title}`);
+          }
         } catch (error) {
           videoInfo = {
-            title: i18next.t("error.untitledVideo"),
-            extractor: i18next.t("error.unknown")
+            title: typeof i18next3 !== "undefined" && i18next3.t ? i18next3.t("error.untitledVideo") : "Untitled Video",
+            extractor: typeof i18next3 !== "undefined" && i18next3.t ? i18next3.t("error.unknown") : "Unknown"
           };
         }
       }
       const outputDir = getTempDir();
       const sanitizedTitle = sanitizeFilename(videoInfo.title);
       const outputTemplate = path.join(outputDir, `${sanitizedTitle}_%(autonumber)s.%(ext)s`);
-      url = normalizeUrl(url);
+      let targetUrl = videoInfo && typeof videoInfo.webpage_url === "string" && videoInfo.webpage_url.startsWith("http") ? videoInfo.webpage_url : url;
+      targetUrl = normalizeUrl(targetUrl);
       const args = [
-        url,
+        targetUrl,
         "-o",
         outputTemplate,
         "-f",
-        "bestvideo+bestaudio/best",
+        "bestvideo+bestaudio/best/b",
         "--merge-output-format",
         "mp4",
         "--no-warnings",
-        ...getSiteArgs(url)
+        ...getSiteArgs(targetUrl)
       ];
       const ffmpeg = getFfmpegPath();
       if (ffmpeg && fs.existsSync(ffmpeg)) {
         args.push("--ffmpeg-location", path.dirname(ffmpeg));
       }
       if (onStatus)
-        onStatus(i18next.t("ui.downloading"));
+        onStatus(i18next3.t("ui.downloading"));
       const filesBefore = new Set(fs.existsSync(outputDir) ? fs.readdirSync(outputDir) : []);
       await execYtDlp(args, onProgress);
       const filesAfter = fs.readdirSync(outputDir);
       const newFiles = filesAfter.filter((f) => !filesBefore.has(f) && f.startsWith(sanitizedTitle));
       if (newFiles.length === 0) {
-        throw new Error(i18next.t("error.fileNotFound"));
+        throw new Error(i18next3.t("error.fileNotFound"));
       }
       return newFiles.map((filename) => ({
         path: path.join(outputDir, filename),

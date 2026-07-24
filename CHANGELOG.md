@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.4.0
+
+- 优化 Pinterest 视频解析降级链：针对 Pinterest 转存视频（如 Instagram 帖子），自动前置提取嵌入的第三方平台源地址，解决 `No video formats found` 报错
+- 优化信息提取与下载机制：在 `getVideoInfo` 阶段即完成第三方目标地址与 `webpage_url` 的同步转换，消除二次重复请求
+- 优化格式兼容策略：在视频下载阶段采用 `bestvideo+bestaudio/best/b` 通用兼容格式
+- 优化代理与网络请求：网页抓取优先接入 Chromium 浏览器网络栈（全局 `fetch`），自动复用 Eagle 的系统代理与 VPN 节点
+- 新增 Instagram 通用 Cookie 静默重试机制，规避匿名访问限制
+- 优化 Pinterest 子域名（如 uk.pinterest.com）重定向自动追踪与 Carousel 帖子的元数据提取
+
+---
+
+- Improved Pinterest video extraction fallback chain: automatically pre-extracts third-party source URLs (e.g. Instagram) embedded in Pinterest pins to fix `No video formats found` errors
+- Optimized metadata extraction and download flow: converts target source URLs during `getVideoInfo` to prevent redundant requests
+- Optimized video format matching strategy with fallback to `bestvideo+bestaudio/best/b`
+- Enhanced network proxy compatibility by utilizing global Chromium `fetch` stack for page fetching
+- Added automatic fallback to browser cookies for Instagram/Pinterest requests requiring authentication
+- Improved handling of Pinterest subdomains (e.g. uk.pinterest.com) and multi-media carousel pins
+
+
 ## 2.3.0
 
 - 新增依赖管理页面：可查看 yt-dlp 与 ffmpeg 的安装状态和版本，支持一键安装、更新、重装、卸载

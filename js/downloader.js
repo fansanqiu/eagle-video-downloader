@@ -7,6 +7,7 @@ const path = require("path");
 const fs = require("fs");
 const os = require("os");
 const { spawn } = require("child_process");
+const i18next = require("i18next");
 
 const { getYtDlpPath, getFfmpegPath, BIN_DIR, downloadYtDlp } = require("./binary");
 
@@ -147,6 +148,79 @@ function execYtDlp(args, onProgress, onOutput, allowRecovery = true) {
           }
         }
 
+        // Pinterest "No video formats found" 处理：降级链 (优先第三方来源链接提取重试 -> Cookie 重试)
+        const isNoFormats = stderr.includes("No video formats found") || stderr.includes("[Pinterest]") || stderr.includes("login") || stderr.includes("redirect");
+        const urlArg = args.find(a => typeof a === 'string' && a.startsWith('http'));
+        const isPinterestUrl = urlArg && (urlArg.includes('pinterest.com') || urlArg.includes('pin.it'));
+        const isInstagramUrl = urlArg && urlArg.includes('instagram.com');
+
+        if (isNoFormats && isPinterestUrl) {
+          (async () => {
+            const alreadyTriedSource = args.some(a => typeof a === 'string' && (a.includes('instagram.com') || a.includes('youtube.com') || a.includes('vimeo.com') || a.includes('tiktok.com')));
+            let extractedSourceUrl = null;
+            if (!alreadyTriedSource) {
+              let sourceUrl = await extractPinterestSourceUrl(urlArg);
+              if (sourceUrl) {
+                // 清理多图索引参数，恢复为帖子根地址
+                sourceUrl = sourceUrl.replace(/\?img_index=\d+/, "");
+                extractedSourceUrl = sourceUrl;
+
+                // 清除原 Pinterest 的站点参数与 Cookie 参数
+                const oldSiteArgs = getSiteArgs(urlArg);
+                let cleanedArgs = args.filter(a => !oldSiteArgs.includes(a) && a !== "--cookies-from-browser" && a !== "chrome");
+                const newSiteArgs = getSiteArgs(sourceUrl);
+
+                const newArgs = cleanedArgs.map(a => a === urlArg ? sourceUrl : a);
+                newArgs.push(...newSiteArgs);
+
+                try {
+                  const res = await execYtDlp(newArgs, onProgress, onOutput, false);
+                  resolve(res);
+                  return;
+                } catch (e) {
+                  // 第三方来源首次尝试失败，对该来源 URL 做 Cookie 重试
+                  try {
+                    const res = await execYtDlp([...newArgs, "--cookies-from-browser", "chrome"], onProgress, onOutput, false);
+                    resolve(res);
+                    return;
+                  } catch (e2) {
+                    // 来源 URL Cookie 重试也失败
+                  }
+                }
+              }
+            }
+
+            // 兜底：对原始 Pinterest URL 做 Cookie 重试（仅在未提取到第三方来源时有意义）
+            if (!extractedSourceUrl) {
+              const alreadyTriedCookies = args.includes("--cookies-from-browser");
+              if (!alreadyTriedCookies) {
+                try {
+                  const res = await execYtDlp([...args, "--cookies-from-browser", "chrome"], onProgress, onOutput, false);
+                  resolve(res);
+                  return;
+                } catch (e) {
+                  // Cookie 重试受限
+                }
+              }
+            }
+
+            reject(
+              new Error(`${i18next.t("error.ytdlpExitedWithCode")} ${code}: ${stderr}`),
+            );
+          })();
+          return;
+        }
+
+        // Instagram 自动使用浏览器 Cookie 重试
+        if (isInstagramUrl && !args.includes("--cookies-from-browser")) {
+          execYtDlp([...args, "--cookies-from-browser", "chrome"], onProgress, onOutput, false)
+            .then(resolve)
+            .catch(() =>
+              reject(new Error(`${i18next.t("error.ytdlpExitedWithCode")} ${code}: ${stderr}`))
+            );
+          return;
+        }
+
         reject(
           new Error(`${i18next.t("error.ytdlpExitedWithCode")} ${code}: ${stderr}`),
         );
@@ -155,17 +229,119 @@ function execYtDlp(args, onProgress, onOutput, allowRecovery = true) {
   });
 }
 
+function fetchWithRedirect(url, maxRedirects = 5) {
+  return new Promise((resolve) => {
+    if (maxRedirects <= 0) return resolve(null);
+    try {
+      const u = new URL(url);
+      const client = u.protocol === "https:" ? https : http;
+      const req = client.get(
+        url,
+        {
+          headers: {
+            "User-Agent":
+              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          },
+        },
+        (res) => {
+          if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+            let redirectUrl = res.headers.location;
+            if (redirectUrl.startsWith("/")) {
+              redirectUrl = `${u.protocol}//${u.host}${redirectUrl}`;
+            }
+            return fetchWithRedirect(redirectUrl, maxRedirects - 1).then(resolve);
+          }
+          let html = "";
+          res.on("data", (chunk) => (html += chunk));
+          res.on("end", () => resolve(html));
+        }
+      );
+      req.on("error", () => resolve(null));
+      req.setTimeout(8000, () => {
+        req.destroy();
+        resolve(null);
+      });
+    } catch (e) {
+      resolve(null);
+    }
+  });
+}
+
+/**
+ * 抓取网页 HTML 内容
+ * 优先使用全局 fetch (走 Chromium 代理网络栈，支持系统代理/VPN，自动跟随重定向)
+ * 降级使用 Node.js https.get
+ */
+async function fetchPageHtml(url) {
+  try {
+    if (typeof fetch === "function") {
+      const res = await fetch(url, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        },
+        redirect: "follow",
+      });
+      if (res.status >= 200 && res.status < 400) {
+        const text = await res.text();
+        if (text && text.length > 0) return text;
+      }
+    }
+  } catch (e) {}
+
+  return await fetchWithRedirect(url);
+}
+
+/**
+ * 从 Pinterest 页面抓取第三方来源链接 (如 Instagram 帖子)
+ */
+async function extractPinterestSourceUrl(pinterestUrl) {
+  try {
+    const html = await fetchPageHtml(pinterestUrl);
+    if (html) {
+      const linkMatches = html.match(
+        /https?:(?:\/|\\\/)+[^\s"'<>\\]*?(?:instagram\.com|youtube\.com|vimeo\.com|tiktok\.com)[^\s"'<>\\]*/gi
+      );
+      if (linkMatches && linkMatches.length > 0) {
+        let cleanUrl = linkMatches[0].replace(/\\\/|\\/g, "/");
+        cleanUrl = cleanUrl.replace(/\\u0026/g, "&");
+        return cleanUrl;
+      }
+    }
+  } catch (e) {}
+  return null;
+}
+
 /**
  * 返回特定站点需要的额外 yt-dlp 参数
  * BiliBili：补充 Referer 和 User-Agent，避免 HTTP 412
+ * Pinterest：补充 Referer 和 User-Agent，帮助下发完整 SSR 结构
+ * Instagram：补充 Referer 和 User-Agent，规避匿名拦截
  */
 function getSiteArgs(url) {
   try {
-    const host = new URL(url).hostname.replace(/^www\./, '');
-    if (host === 'bilibili.com' || host === 'b23.tv') {
+    const host = new URL(url).hostname.replace(/^www\./, '').toLowerCase();
+    if (host === 'bilibili.com' || host === 'b23.tv' || host.endsWith('.bilibili.com')) {
       return [
         '--referer', 'https://www.bilibili.com',
         '--add-header', 'User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      ];
+    }
+    if (host === 'twitter.com' || host === 'x.com' || host.endsWith('.twitter.com') || host.endsWith('.x.com')) {
+      return [
+        '--ignore-no-formats-error',
+      ];
+    }
+    if (host === 'pinterest.com' || host.endsWith('.pinterest.com') || host === 'pin.it') {
+      return [
+        '--referer', 'https://www.pinterest.com/',
+        '--add-header', 'User-Agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      ];
+    }
+    if (host === 'instagram.com' || host.endsWith('.instagram.com')) {
+      return [
+        '--referer', 'https://www.instagram.com/',
+        '--add-header', 'User-Agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       ];
     }
   } catch (e) {}
@@ -203,19 +379,54 @@ function normalizeUrl(url) {
  */
 async function getVideoInfo(url) {
   url = normalizeUrl(url);
-  const args = ["--dump-json", "--no-warnings", ...getSiteArgs(url), url];
 
-  const output = await execYtDlp(args);
-  const info = JSON.parse(output.trim().split("\n")[0]);
+  // Pinterest 识别与预处理：若为 Pinterest 链接，先尝试调取第三方来源链接（如 Instagram）
+  let targetUrl = url;
+  const isPinterest = url.includes('pinterest.com') || url.includes('pin.it');
+  if (isPinterest) {
+    const sourceUrl = await extractPinterestSourceUrl(url);
+    if (sourceUrl) {
+      targetUrl = sourceUrl.replace(/\?img_index=\d+/, "");
+    }
+  }
+
+  const args = ["--dump-json", "--no-warnings", ...getSiteArgs(targetUrl), targetUrl];
+
+  let output;
+  try {
+    output = await execYtDlp(args);
+  } catch (err) {
+    // 若原 Pinterest 链接在没查出第三方来源时解析失败，做 Cookie 重试兜底
+    if (isPinterest && targetUrl === url) {
+      const cookieArgs = [...args, "--cookies-from-browser", "chrome"];
+      output = await execYtDlp(cookieArgs);
+    } else {
+      throw err;
+    }
+  }
+
+  const lines = output.trim().split("\n").filter(Boolean);
+  let info = {};
+  for (const line of lines) {
+    try {
+      const parsed = JSON.parse(line);
+      if (parsed._type === "video" || parsed.title || parsed.playlist_title) {
+        info = parsed;
+        if (parsed.title) break;
+      } else if (!info.id) {
+        info = parsed;
+      }
+    } catch (e) {}
+  }
 
   return {
-    title: info.title || i18next.t("error.untitledVideo"),
+    title: info.title || info.playlist_title || i18next.t("error.untitledVideo"),
     description: info.description || "",
     duration: info.duration || 0,
     thumbnail: info.thumbnail || null,
-    uploader: info.uploader || info.channel || i18next.t("error.unknown"),
+    uploader: info.uploader || info.channel || info.playlist_uploader || i18next.t("error.unknown"),
     extractor: info.extractor || i18next.t("error.unknown"),
-    webpage_url: info.webpage_url || url,
+    webpage_url: info.webpage_url || targetUrl,
     id: info.id || null,
   };
 }
@@ -224,11 +435,23 @@ async function getVideoInfo(url) {
  * 净化文件名
  */
 function sanitizeFilename(filename) {
-  return filename
+  let str = (typeof filename === 'string' && filename.trim().length > 0) ? filename : "";
+  if (!str) {
+    try {
+      if (typeof i18next !== "undefined" && typeof i18next.t === "function") {
+        const res = i18next.t("error.untitledVideo");
+        if (typeof res === 'string' && res.length > 0) str = res;
+      }
+    } catch (e) {}
+  }
+  if (!str || typeof str !== 'string') {
+    str = "Untitled Video";
+  }
+  return str
     .replace(/[<>:"/\\|?*]/g, "_")
     .replace(/\s+/g, " ")
     .trim()
-    .slice(0, 200);
+    .slice(0, 200) || "Untitled Video";
 }
 
 /**
@@ -261,11 +484,14 @@ async function downloadVideo(url, onProgress, onStatus, preloadedInfo = null) {
     if (onStatus) onStatus(i18next.t("download.fetchingInfo"));
     try {
       videoInfo = await getVideoInfo(url);
-      if (onStatus) onStatus(`${i18next.t("download.foundVideo")}: ${videoInfo.title}`);
+      if (onStatus && videoInfo && videoInfo.title) {
+        const foundMsg = (typeof i18next !== "undefined" && i18next.t) ? i18next.t("download.foundVideo") : "Found Video";
+        onStatus(`${foundMsg}: ${videoInfo.title}`);
+      }
     } catch (error) {
       videoInfo = {
-        title: i18next.t("error.untitledVideo"),
-        extractor: i18next.t("error.unknown"),
+        title: (typeof i18next !== "undefined" && i18next.t) ? i18next.t("error.untitledVideo") : "Untitled Video",
+        extractor: (typeof i18next !== "undefined" && i18next.t) ? i18next.t("error.unknown") : "Unknown",
       };
     }
   }
@@ -276,18 +502,21 @@ async function downloadVideo(url, onProgress, onStatus, preloadedInfo = null) {
   // 使用模板支持多视频下载：%(title)s_%(autonumber)s.%(ext)s
   const outputTemplate = path.join(outputDir, `${sanitizedTitle}_%(autonumber)s.%(ext)s`);
 
-  url = normalizeUrl(url);
+  let targetUrl = (videoInfo && typeof videoInfo.webpage_url === 'string' && videoInfo.webpage_url.startsWith('http')) 
+    ? videoInfo.webpage_url 
+    : url;
+  targetUrl = normalizeUrl(targetUrl);
 
   const args = [
-    url,
+    targetUrl,
     "-o",
     outputTemplate,
     "-f",
-    "bestvideo+bestaudio/best",
+    "bestvideo+bestaudio/best/b",
     "--merge-output-format",
     "mp4",
     "--no-warnings",
-    ...getSiteArgs(url),
+    ...getSiteArgs(targetUrl),
   ];
 
   const ffmpeg = getFfmpegPath();
