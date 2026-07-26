@@ -298,10 +298,21 @@
       width: 16px;
       height: 16px;
       flex-shrink: 0;
+      position: relative;
     }
 
     .btn-icon:hover {
       opacity: 0.9;
+    }
+
+    .btn-icon-badge {
+      position: absolute;
+      top: -2px;
+      right: -2px;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #f0a830;
     }
 
     .header-actions {
@@ -358,20 +369,61 @@
       flex-shrink: 0;
     }
 
-    .deps-source-row {
+    .deps-scroll-body {
+      flex: 1;
+      overflow-y: auto;
+      min-height: 0;
+    }
+
+    .deps-scroll-body::-webkit-scrollbar {
+      width: 3px;
+    }
+
+    .deps-scroll-body::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .deps-scroll-body::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 2px;
+    }
+
+    .deps-section {
+      padding: 12px 14px 8px;
+    }
+
+    .deps-section + .deps-section {
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .deps-section-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--brand);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+
+    .deps-option-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 8px;
-      padding: 8px 12px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-      flex-shrink: 0;
+      padding: 4px 0;
     }
 
-    .deps-source-label {
+    .deps-option-label {
+      font-size: 12px;
+      color: var(--fg1);
+      flex: 1;
+    }
+
+    .deps-option-hint {
       font-size: 11px;
+      line-height: 1.4;
       color: var(--fg2);
-      flex-shrink: 0;
+      margin-bottom: 8px;
     }
 
     .deps-source-select {
@@ -382,35 +434,60 @@
       border-radius: 4px;
       padding: 3px 6px;
       cursor: pointer;
-      max-width: 60%;
+      max-width: 55%;
     }
 
-    .deps-source-hint {
-      padding: 0 12px 8px;
-      font-size: 11px;
-      line-height: 1.4;
-      color: var(--fg2);
-      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    /* Toggle Switch UI */
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 32px;
+      height: 18px;
       flex-shrink: 0;
     }
 
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: rgba(255, 255, 255, 0.15);
+      transition: .2s;
+      border-radius: 18px;
+    }
+
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 14px;
+      width: 14px;
+      left: 2px;
+      bottom: 2px;
+      background-color: white;
+      transition: .2s;
+      border-radius: 50%;
+    }
+
+    input:checked + .slider {
+      background-color: var(--brand);
+    }
+
+    input:checked + .slider:before {
+      transform: translateX(14px);
+    }
+
     .deps-list {
-      flex: 1;
-      overflow-y: auto;
-      min-height: 0;
-    }
-
-    .deps-list::-webkit-scrollbar {
-      width: 3px;
-    }
-
-    .deps-list::-webkit-scrollbar-track {
-      background: transparent;
-    }
-
-    .deps-list::-webkit-scrollbar-thumb {
-      background: rgba(255, 255, 255, 0.15);
-      border-radius: 2px;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
     }
 
     .dep-card {
@@ -615,12 +692,10 @@
       </div>
       <div class="header-actions no-drag">
         <button id="depsEntryBtn" class="btn-icon" title="">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect x="1" y="1" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.3"/>
-            <rect x="8" y="1" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.3"/>
-            <rect x="1" y="8" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.3"/>
-            <rect x="8" y="8" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.3"/>
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path fill-rule="evenodd" clip-rule="evenodd" d="M9.135 1.5H6.865l-.364 1.542a5.535 5.535 0 0 0-1.264.524l-1.464-.678-1.605 1.605.678 1.464c-.21.4-.386.824-.524 1.264L.775 7.585v2.27l1.542.364c.138.44.314.864.524 1.264l-.678 1.464 1.605 1.605 1.464-.678c.4.21.824.386 1.264.524l.364 1.542h2.27l.364-1.542c.44-.138.864-.314 1.264-.524l1.464.678 1.605-1.605-.678-1.464c.21-.4.386-.824.524-1.264l1.542-.364v-2.27l-1.542-.364a5.535 5.535 0 0 0-.524-1.264l.678-1.464-1.605-1.605-1.464.678a5.535 5.535 0 0 0-1.264-.524L9.135 1.5zM8 10a2 2 0 1 0 0-4 2 2 0 0 0 0 4z" fill="currentColor"/>
           </svg>
+          <span id="depsBadge" class="btn-icon-badge hidden"></span>
         </button>
         <div id="closeButton" class="btn-close">
           <img src="assets/icon_x.svg" width="16" height="16" alt="Close" />
@@ -637,45 +712,66 @@
           <span class="deps-subheader-title"></span>
         </div>
         <p id="depsNotice" class="deps-notice hidden"></p>
-        <div class="deps-source-row">
-          <label id="depsSourceLabel" for="depsSourceSelect" class="deps-source-label"></label>
-          <select id="depsSourceSelect" class="deps-source-select no-drag"></select>
-        </div>
-        <p id="depsSourceHint" class="deps-source-hint"></p>
-        <div class="deps-list">
-          <!-- yt-dlp card -->
-          <div class="dep-card">
-            <div class="dep-card-top">
-              <div class="dep-info">
-                <span class="dep-name">yt-dlp</span>
-                <span id="ytdlpDesc" class="dep-desc"></span>
-              </div>
-              <span id="ytdlpStatus" class="dep-status checking"></span>
+        <div class="deps-scroll-body">
+          <!-- Section 1: Preferences -->
+          <div class="deps-section">
+            <div id="sectionPreferencesTitle" class="deps-section-title"></div>
+            
+            <div class="deps-option-row">
+              <span id="autoAddSourceLabel" class="deps-option-label"></span>
+              <label class="switch no-drag">
+                <input type="checkbox" id="autoAddSourceToggle" checked />
+                <span class="slider"></span>
+              </label>
             </div>
-            <div id="ytdlpDetail" class="dep-detail"></div>
-            <div id="ytdlpProgressWrap" class="dep-progress-wrap hidden">
-              <div class="dep-progress-bar">
-                <div id="ytdlpProgressFill" class="dep-progress-fill"></div>
-              </div>
+            <p id="autoAddSourceHint" class="deps-option-hint"></p>
+
+            <div class="deps-option-row" style="margin-top: 4px;">
+              <label id="depsSourceLabel" for="depsSourceSelect" class="deps-option-label"></label>
+              <select id="depsSourceSelect" class="deps-source-select no-drag"></select>
             </div>
-            <div id="ytdlpActions" class="dep-actions"></div>
+            <p id="depsSourceHint" class="deps-option-hint"></p>
           </div>
-          <!-- ffmpeg card -->
-          <div class="dep-card">
-            <div class="dep-card-top">
-              <div class="dep-info">
-                <span class="dep-name">ffmpeg</span>
-                <span id="ffmpegDesc" class="dep-desc"></span>
+
+          <!-- Section 2: Core Engines -->
+          <div class="deps-section">
+            <div id="sectionEnginesTitle" class="deps-section-title"></div>
+            <div class="deps-list">
+              <!-- yt-dlp card -->
+              <div class="dep-card">
+                <div class="dep-card-top">
+                  <div class="dep-info">
+                    <span class="dep-name">yt-dlp</span>
+                    <span id="ytdlpDesc" class="dep-desc"></span>
+                  </div>
+                  <span id="ytdlpStatus" class="dep-status checking"></span>
+                </div>
+                <div id="ytdlpDetail" class="dep-detail"></div>
+                <div id="ytdlpProgressWrap" class="dep-progress-wrap hidden">
+                  <div class="dep-progress-bar">
+                    <div id="ytdlpProgressFill" class="dep-progress-fill"></div>
+                  </div>
+                </div>
+                <div id="ytdlpActions" class="dep-actions"></div>
               </div>
-              <span id="ffmpegStatus" class="dep-status checking"></span>
-            </div>
-            <div id="ffmpegDetail" class="dep-detail"></div>
-            <div id="ffmpegProgressWrap" class="dep-progress-wrap hidden">
-              <div class="dep-progress-bar">
-                <div id="ffmpegProgressFill" class="dep-progress-fill"></div>
+              <!-- ffmpeg card -->
+              <div class="dep-card">
+                <div class="dep-card-top">
+                  <div class="dep-info">
+                    <span class="dep-name">ffmpeg</span>
+                    <span id="ffmpegDesc" class="dep-desc"></span>
+                  </div>
+                  <span id="ffmpegStatus" class="dep-status checking"></span>
+                </div>
+                <div id="ffmpegDetail" class="dep-detail"></div>
+                <div id="ffmpegProgressWrap" class="dep-progress-wrap hidden">
+                  <div class="dep-progress-bar">
+                    <div id="ffmpegProgressFill" class="dep-progress-fill"></div>
+                  </div>
+                </div>
+                <div id="ffmpegActions" class="dep-actions"></div>
               </div>
             </div>
-            <div id="ffmpegActions" class="dep-actions"></div>
           </div>
         </div>
       </div>

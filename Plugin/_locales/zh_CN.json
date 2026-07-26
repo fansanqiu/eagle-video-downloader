@@ -66,7 +66,11 @@
     "done": "✓ 已更新至最新版"
   },
   "deps": {
-    "title": "依赖管理",
+    "title": "设置与依赖管理",
+    "sectionPreferences": "偏好设置",
+    "sectionEngines": "核心引擎依赖",
+    "autoAddSourceLabel": "自动设置 Eagle 数据来源",
+    "autoAddSourceHint": "开启后，下载视频时会自动在 Eagle 中记录原始网页 URL",
     "setupRequired": "首次使用需要先安装以下组件，安装完成后将自动进入主界面",
     "back": "← 返回",
     "ytdlpDesc": "视频解析与下载引擎",

@@ -13,7 +13,7 @@ async function importToEagle(videoPath, metadata, sourceUrl) {
 
   const importOptions = {
     name: metadata.title || i18next.t("error.downloadedVideo"),
-    website: sourceUrl,
+    website: sourceUrl || undefined,
     tags: [metadata.extractor || "video"],
     annotation: metadata.description ? metadata.description.slice(0, 500) : "",
   };

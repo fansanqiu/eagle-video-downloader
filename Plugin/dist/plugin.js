@@ -3143,6 +3143,167 @@ var require_downloader = __commonJS({
       }
       return null;
     }
+    async function extractPinterestPinData(pinterestUrl) {
+      try {
+        const html = await fetchPageHtml(pinterestUrl);
+        if (!html)
+          return null;
+        const pinIdMatch = pinterestUrl.match(/pin\/([\d]+)/);
+        const pinId = pinIdMatch ? pinIdMatch[1] : null;
+        const result = {
+          isVideo: false,
+          videos: null,
+          imageUrl: null,
+          title: "",
+          description: "",
+          link: null,
+          sourceUrl: null
+          // 第三方视频来源
+        };
+        if (pinId) {
+          const entityIdx = html.indexOf(`"entityId":"${pinId}"`);
+          if (entityIdx !== -1) {
+            const start = Math.max(0, entityIdx - 3e3);
+            const end = Math.min(html.length, entityIdx + 3e3);
+            const context = html.substring(start, end);
+            const isVideoMatch = context.match(/"isVideo"\s*:\s*(true|false)/);
+            if (isVideoMatch)
+              result.isVideo = isVideoMatch[1] === "true";
+            const videosMatch = context.match(/"videos"\s*:\s*(null|\{)/);
+            if (videosMatch && videosMatch[1] !== "null")
+              result.videos = true;
+            const descMatch = context.match(/"description"\s*:\s*"([^"]{0,500})"/);
+            if (descMatch)
+              result.description = descMatch[1];
+            const titleMatch = context.match(/"seoTitle"\s*:\s*"([^"]{0,200})"/);
+            if (titleMatch && titleMatch[1])
+              result.title = titleMatch[1];
+            const linkMatch = context.match(/"link"\s*:\s*"([^"]+)"/);
+            if (linkMatch)
+              result.link = linkMatch[1];
+          }
+        }
+        if (pinId) {
+          const entityIdx = html.indexOf(`"entityId":"${pinId}"`);
+          if (entityIdx !== -1) {
+            const imgSearchStart = Math.max(0, entityIdx - 8e3);
+            const imgSearchEnd = Math.min(html.length, entityIdx + 8e3);
+            const imgContext = html.substring(imgSearchStart, imgSearchEnd);
+            const origMatch = imgContext.match(/https?:\/\/i\.pinimg\.com\/originals\/([a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9]+\.(?:jpg|png|gif|webp))/i);
+            if (origMatch) {
+              result.imageUrl = `https://i.pinimg.com/originals/${origMatch[1]}`;
+            } else {
+              const anyMatch = imgContext.match(/https?:\/\/i\.pinimg\.com\/(?:1200x|736x|564x|474x|236x|136x136|60x60|600x315)\/([a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9]+\.(?:jpg|png|gif|webp))/i);
+              if (anyMatch) {
+                result.imageUrl = `https://i.pinimg.com/originals/${anyMatch[1]}`;
+              }
+            }
+          }
+        }
+        if (!result.imageUrl) {
+          const originalsMatch = html.match(/https?:\/\/i\.pinimg\.com\/originals\/[a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9]+\.(?:jpg|png|gif|webp)/i);
+          if (originalsMatch) {
+            result.imageUrl = originalsMatch[0];
+          } else {
+            const anyImgMatch = html.match(/https?:\/\/i\.pinimg\.com\/(?:1200x|736x|564x|474x)\/([a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9]+\.(?:jpg|png|gif|webp))/i);
+            if (anyImgMatch) {
+              result.imageUrl = `https://i.pinimg.com/originals/${anyImgMatch[1]}`;
+            }
+          }
+        }
+        const sourceMatches = html.match(
+          /https?:(?:\/|\\\/)+[^\s"'<>\\]*?(?:instagram\.com|youtube\.com|vimeo\.com|tiktok\.com)[^\s"'<>\\]*/gi
+        );
+        if (sourceMatches && sourceMatches.length > 0) {
+          let cleanUrl = sourceMatches[0].replace(/\\\/|\\/g, "/");
+          cleanUrl = cleanUrl.replace(/\\u0026/g, "&");
+          result.sourceUrl = cleanUrl;
+        }
+        if (!result.title && result.description) {
+          result.title = result.description.split("\n")[0].substring(0, 100);
+        }
+        if (!result.title)
+          result.title = "Pinterest Pin";
+        return result;
+      } catch (e) {
+        return null;
+      }
+    }
+    async function downloadFile(url, outputPath, onProgress) {
+      const dir = path.dirname(outputPath);
+      if (!fs.existsSync(dir))
+        fs.mkdirSync(dir, { recursive: true });
+      try {
+        if (typeof fetch === "function") {
+          const res = await fetch(url, {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            },
+            redirect: "follow"
+          });
+          if (!res.ok)
+            throw new Error(`HTTP ${res.status}`);
+          const contentLength = parseInt(res.headers.get("content-length") || "0", 10);
+          const reader = res.body.getReader();
+          const chunks = [];
+          let received = 0;
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done)
+              break;
+            chunks.push(value);
+            received += value.length;
+            if (onProgress && contentLength > 0) {
+              onProgress({ percent: Math.round(received / contentLength * 100) });
+            }
+          }
+          const buffer = Buffer.concat(chunks);
+          fs.writeFileSync(outputPath, buffer);
+          if (onProgress)
+            onProgress({ percent: 100 });
+          return outputPath;
+        }
+      } catch (e) {
+      }
+      return new Promise((resolve, reject) => {
+        const u = new URL(url);
+        const client = u.protocol === "https:" ? https : http;
+        const req = client.get(url, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+          }
+        }, (res) => {
+          if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+            return downloadFile(res.headers.location, outputPath, onProgress).then(resolve).catch(reject);
+          }
+          if (res.statusCode < 200 || res.statusCode >= 400) {
+            return reject(new Error(`HTTP ${res.statusCode}`));
+          }
+          const contentLength = parseInt(res.headers["content-length"] || "0", 10);
+          const fileStream = fs.createWriteStream(outputPath);
+          let received = 0;
+          res.on("data", (chunk) => {
+            received += chunk.length;
+            if (onProgress && contentLength > 0) {
+              onProgress({ percent: Math.round(received / contentLength * 100) });
+            }
+          });
+          res.pipe(fileStream);
+          fileStream.on("finish", () => {
+            fileStream.close();
+            if (onProgress)
+              onProgress({ percent: 100 });
+            resolve(outputPath);
+          });
+          fileStream.on("error", reject);
+        });
+        req.on("error", reject);
+        req.setTimeout(3e4, () => {
+          req.destroy();
+          reject(new Error("Download timeout"));
+        });
+      });
+    }
     function getSiteArgs(url) {
       try {
         const host = new URL(url).hostname.replace(/^www\./, "").toLowerCase();
@@ -3196,26 +3357,69 @@ var require_downloader = __commonJS({
     }
     async function getVideoInfo(url) {
       url = normalizeUrl(url);
-      let targetUrl = url;
       const isPinterest = url.includes("pinterest.com") || url.includes("pin.it");
       if (isPinterest) {
-        const sourceUrl = await extractPinterestSourceUrl(url);
-        if (sourceUrl) {
-          targetUrl = sourceUrl.replace(/\?img_index=\d+/, "");
+        const pinData = await extractPinterestPinData(url);
+        if (pinData) {
+          const hasVideoContent = pinData.isVideo || pinData.videos;
+          const hasVideoSource = !!pinData.sourceUrl;
+          if (!hasVideoContent && !hasVideoSource) {
+            if (pinData.imageUrl) {
+              return {
+                type: "image",
+                imageUrl: pinData.imageUrl,
+                title: pinData.title || "Pinterest Pin",
+                description: pinData.description || "",
+                duration: 0,
+                thumbnail: pinData.imageUrl,
+                uploader: "Pinterest",
+                extractor: "pinterest",
+                webpage_url: url,
+                id: null
+              };
+            }
+          }
+          if (hasVideoSource && !hasVideoContent) {
+            const targetUrl = pinData.sourceUrl.replace(/\?img_index=\d+/, "");
+            const args2 = ["--dump-json", "--no-warnings", ...getSiteArgs(targetUrl), targetUrl];
+            try {
+              const output2 = await execYtDlp(args2);
+              return parseYtDlpOutput(output2, targetUrl);
+            } catch (e) {
+              if (pinData.imageUrl) {
+                return {
+                  type: "image",
+                  imageUrl: pinData.imageUrl,
+                  title: pinData.title || "Pinterest Pin",
+                  description: pinData.description || "",
+                  duration: 0,
+                  thumbnail: pinData.imageUrl,
+                  uploader: "Pinterest",
+                  extractor: "pinterest",
+                  webpage_url: url,
+                  id: null
+                };
+              }
+              throw e;
+            }
+          }
         }
       }
-      const args = ["--dump-json", "--no-warnings", ...getSiteArgs(targetUrl), targetUrl];
+      const args = ["--dump-json", "--no-warnings", ...getSiteArgs(url), url];
       let output;
       try {
         output = await execYtDlp(args);
       } catch (err) {
-        if (isPinterest && targetUrl === url) {
+        if (isPinterest) {
           const cookieArgs = [...args, "--cookies-from-browser", "chrome"];
           output = await execYtDlp(cookieArgs);
         } else {
           throw err;
         }
       }
+      return parseYtDlpOutput(output, url);
+    }
+    function parseYtDlpOutput(output, fallbackUrl) {
       const lines = output.trim().split("\n").filter(Boolean);
       let info = {};
       for (const line of lines) {
@@ -3238,7 +3442,7 @@ var require_downloader = __commonJS({
         thumbnail: info.thumbnail || null,
         uploader: info.uploader || info.channel || info.playlist_uploader || i18next3.t("error.unknown"),
         extractor: info.extractor || i18next3.t("error.unknown"),
-        webpage_url: info.webpage_url || targetUrl,
+        webpage_url: info.webpage_url || fallbackUrl,
         id: info.id || null
       };
     }
@@ -3285,6 +3489,22 @@ var require_downloader = __commonJS({
             extractor: typeof i18next3 !== "undefined" && i18next3.t ? i18next3.t("error.unknown") : "Unknown"
           };
         }
+      }
+      if (videoInfo && videoInfo.type === "image" && videoInfo.imageUrl) {
+        const outputDir2 = getTempDir();
+        const sanitizedTitle2 = sanitizeFilename(videoInfo.title);
+        const urlPath = new URL(videoInfo.imageUrl).pathname;
+        const ext = path.extname(urlPath) || ".jpg";
+        const filename = `${sanitizedTitle2}${ext}`;
+        const outputPath = path.join(outputDir2, filename);
+        if (onStatus)
+          onStatus(i18next3.t("ui.downloading"));
+        await downloadFile(videoInfo.imageUrl, outputPath, onProgress);
+        return [{
+          path: outputPath,
+          metadata: videoInfo,
+          filename
+        }];
       }
       const outputDir = getTempDir();
       const sanitizedTitle = sanitizeFilename(videoInfo.title);
@@ -3346,7 +3566,7 @@ var require_eagle = __commonJS({
       }
       const importOptions = {
         name: metadata.title || i18next.t("error.downloadedVideo"),
-        website: sourceUrl,
+        website: sourceUrl || void 0,
         tags: [metadata.extractor || "video"],
         annotation: metadata.description ? metadata.description.slice(0, 500) : ""
       };
@@ -3543,10 +3763,21 @@ var require_ui = __commonJS({
         progressFill: document.getElementById("updateProgressFill")
       };
     }
-    function showDepsPage({ gating = false, sourcePref = "auto" } = {}) {
+    function updateDepsBadge(hasNotice) {
+      const badge = document.getElementById("depsBadge");
+      if (!badge)
+        return;
+      badge.classList.toggle("hidden", !hasNotice);
+    }
+    function showDepsPage({ gating = false, sourcePref = "auto", autoAddSourcePref = true } = {}) {
       var _a, _b, _c;
       const backBtn = document.getElementById("depsBackBtn");
       const subTitle = document.querySelector(".deps-subheader-title");
+      const sectionPrefTitle = document.getElementById("sectionPreferencesTitle");
+      const sectionEnginesTitle = document.getElementById("sectionEnginesTitle");
+      const autoAddLabel = document.getElementById("autoAddSourceLabel");
+      const autoAddHint = document.getElementById("autoAddSourceHint");
+      const autoAddToggle = document.getElementById("autoAddSourceToggle");
       const notice = document.getElementById("depsNotice");
       const ytdlpDesc = document.getElementById("ytdlpDesc");
       const ffmpegDesc = document.getElementById("ffmpegDesc");
@@ -3556,6 +3787,16 @@ var require_ui = __commonJS({
         backBtn.textContent = i18next.t("deps.back");
       if (subTitle)
         subTitle.textContent = i18next.t("deps.title");
+      if (sectionPrefTitle)
+        sectionPrefTitle.textContent = i18next.t("deps.sectionPreferences");
+      if (sectionEnginesTitle)
+        sectionEnginesTitle.textContent = i18next.t("deps.sectionEngines");
+      if (autoAddLabel)
+        autoAddLabel.textContent = i18next.t("deps.autoAddSourceLabel");
+      if (autoAddHint)
+        autoAddHint.textContent = i18next.t("deps.autoAddSourceHint");
+      if (autoAddToggle)
+        autoAddToggle.checked = autoAddSourcePref;
       if (notice)
         notice.textContent = i18next.t("deps.setupRequired");
       if (ytdlpDesc)
@@ -3840,6 +4081,7 @@ var require_ui = __commonJS({
       showDepsPage,
       hideDepsPage,
       setDepsGating,
+      updateDepsBadge,
       updateDownloadSourceHint,
       updateYtdlpCard,
       updateFfmpegCard
@@ -3918,7 +4160,11 @@ var require_en = __commonJS({
         done: "\u2713 Updated to latest version"
       },
       deps: {
-        title: "Dependencies",
+        title: "Settings & Dependencies",
+        sectionPreferences: "Preferences",
+        sectionEngines: "Core Engines",
+        autoAddSourceLabel: "Auto-set Eagle Data Source",
+        autoAddSourceHint: "When enabled, original web URLs are automatically saved to Eagle items",
         setupRequired: "These components are required for first-time use. The main view will open automatically once setup is complete.",
         back: "\u2190 Back",
         ytdlpDesc: "Video extraction & download engine",
@@ -4032,7 +4278,11 @@ var require_zh_CN = __commonJS({
         done: "\u2713 \u5DF2\u66F4\u65B0\u81F3\u6700\u65B0\u7248"
       },
       deps: {
-        title: "\u4F9D\u8D56\u7BA1\u7406",
+        title: "\u8BBE\u7F6E\u4E0E\u4F9D\u8D56\u7BA1\u7406",
+        sectionPreferences: "\u504F\u597D\u8BBE\u7F6E",
+        sectionEngines: "\u6838\u5FC3\u5F15\u64CE\u4F9D\u8D56",
+        autoAddSourceLabel: "\u81EA\u52A8\u8BBE\u7F6E Eagle \u6570\u636E\u6765\u6E90",
+        autoAddSourceHint: "\u5F00\u542F\u540E\uFF0C\u4E0B\u8F7D\u89C6\u9891\u65F6\u4F1A\u81EA\u52A8\u5728 Eagle \u4E2D\u8BB0\u5F55\u539F\u59CB\u7F51\u9875 URL",
         setupRequired: "\u9996\u6B21\u4F7F\u7528\u9700\u8981\u5148\u5B89\u88C5\u4EE5\u4E0B\u7EC4\u4EF6\uFF0C\u5B89\u88C5\u5B8C\u6210\u540E\u5C06\u81EA\u52A8\u8FDB\u5165\u4E3B\u754C\u9762",
         back: "\u2190 \u8FD4\u56DE",
         ytdlpDesc: "\u89C6\u9891\u89E3\u6790\u4E0E\u4E0B\u8F7D\u5F15\u64CE",
@@ -4095,11 +4345,19 @@ var eagleApi = require_eagle();
 var ui = require_ui();
 var isInitialized = false;
 var DOWNLOAD_SOURCE_KEY = "eagle-video-downloader.downloadSource";
+var AUTO_ADD_SOURCE_KEY = "eagle-video-downloader.autoAddSource";
 function getDownloadSourcePref() {
   return localStorage.getItem(DOWNLOAD_SOURCE_KEY) || "auto";
 }
 function setDownloadSourcePref(value) {
   localStorage.setItem(DOWNLOAD_SOURCE_KEY, value);
+}
+function getAutoAddSourcePref() {
+  const val = localStorage.getItem(AUTO_ADD_SOURCE_KEY);
+  return val === null ? true : val === "true";
+}
+function setAutoAddSourcePref(value) {
+  localStorage.setItem(AUTO_ADD_SOURCE_KEY, String(value));
 }
 var downloadQueue = [];
 var MAX_CONCURRENT = 3;
@@ -4143,6 +4401,12 @@ function setupEventListeners() {
   document.getElementById("updateBannerBtn").addEventListener("click", handleUpdateClick);
   document.getElementById("depsEntryBtn").addEventListener("click", openDepsPage);
   document.getElementById("depsBackBtn").addEventListener("click", closeDepsPage);
+  const autoAddToggle = document.getElementById("autoAddSourceToggle");
+  if (autoAddToggle) {
+    autoAddToggle.addEventListener("change", (e) => {
+      setAutoAddSourcePref(e.target.checked);
+    });
+  }
   document.getElementById("depsSourceSelect").addEventListener("change", (e) => {
     setDownloadSourcePref(e.target.value);
     ui.updateDownloadSourceHint(e.target.value);
@@ -4181,7 +4445,12 @@ async function initializeBinaries() {
     checkForUpdateAndNotify();
     return;
   }
-  ui.showDepsPage({ gating: true, sourcePref: getDownloadSourcePref() });
+  ui.showDepsPage({
+    gating: true,
+    sourcePref: getDownloadSourcePref(),
+    autoAddSourcePref: getAutoAddSourcePref()
+  });
+  ui.updateDepsBadge(true);
   loadDepsInfo();
 }
 function depsReady() {
@@ -4194,10 +4463,17 @@ function refreshDepsGatingState() {
       ui.hideDepsPage();
       initializeMainUI();
       checkForUpdateAndNotify();
+    } else {
+      getYtDlpUpdateInfo().then(({ hasUpdate }) => {
+        ui.updateDepsBadge(hasUpdate);
+      }).catch(() => {
+        ui.updateDepsBadge(false);
+      });
     }
   } else {
     isInitialized = false;
     ui.setDepsGating(true);
+    ui.updateDepsBadge(true);
   }
 }
 function initializeMainUI() {
@@ -4255,7 +4531,8 @@ async function executeDownload(item) {
     item.speed = "";
     ui.updateQueueItem(item.id, item);
     for (const result of results) {
-      await eagleApi.importToEagle(result.path, result.metadata, item.url);
+      const sourceUrl = getAutoAddSourcePref() ? item.url : void 0;
+      await eagleApi.importToEagle(result.path, result.metadata, sourceUrl);
       downloader.cleanup(result.path);
     }
   } catch (error) {
@@ -4294,12 +4571,19 @@ async function checkForUpdateAndNotify() {
     const { hasUpdate, latestVersion } = await getYtDlpUpdateInfo();
     if (hasUpdate) {
       ui.showUpdateAvailable(latestVersion);
+      ui.updateDepsBadge(true);
+    } else {
+      ui.updateDepsBadge(!depsReady());
     }
   } catch (e) {
+    ui.updateDepsBadge(!depsReady());
   }
 }
 function openDepsPage() {
-  ui.showDepsPage({ sourcePref: getDownloadSourcePref() });
+  ui.showDepsPage({
+    sourcePref: getDownloadSourcePref(),
+    autoAddSourcePref: getAutoAddSourcePref()
+  });
   loadDepsInfo();
 }
 function closeDepsPage() {

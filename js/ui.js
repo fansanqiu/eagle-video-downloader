@@ -237,22 +237,44 @@ function getUpdateBannerEls() {
 }
 
 /**
+ * 更新设置按钮指示红点状态
+ * @param {boolean} hasNotice
+ */
+function updateDepsBadge(hasNotice) {
+  const badge = document.getElementById("depsBadge");
+  if (!badge) return;
+  badge.classList.toggle("hidden", !hasNotice);
+}
+
+/**
  * 显示依赖管理页面
  * @param {Object} opts
  * @param {boolean} opts.gating - 是否为「门槛模式」（依赖未就绪，强制停留在此页，隐藏返回按钮）
  * @param {'auto'|'mirror'|'direct'} opts.sourcePref - 当前下载源偏好
+ * @param {boolean} opts.autoAddSourcePref - 是否自动设置 Eagle 数据来源
  */
-function showDepsPage({ gating = false, sourcePref = 'auto' } = {}) {
+function showDepsPage({ gating = false, sourcePref = 'auto', autoAddSourcePref = true } = {}) {
   // 填充静态文本
   const backBtn = document.getElementById("depsBackBtn");
   const subTitle = document.querySelector(".deps-subheader-title");
+  const sectionPrefTitle = document.getElementById("sectionPreferencesTitle");
+  const sectionEnginesTitle = document.getElementById("sectionEnginesTitle");
+  const autoAddLabel = document.getElementById("autoAddSourceLabel");
+  const autoAddHint = document.getElementById("autoAddSourceHint");
+  const autoAddToggle = document.getElementById("autoAddSourceToggle");
   const notice = document.getElementById("depsNotice");
   const ytdlpDesc = document.getElementById("ytdlpDesc");
   const ffmpegDesc = document.getElementById("ffmpegDesc");
   const sourceLabel = document.getElementById("depsSourceLabel");
   const sourceSelect = document.getElementById("depsSourceSelect");
+
   if (backBtn) backBtn.textContent = i18next.t("deps.back");
   if (subTitle) subTitle.textContent = i18next.t("deps.title");
+  if (sectionPrefTitle) sectionPrefTitle.textContent = i18next.t("deps.sectionPreferences");
+  if (sectionEnginesTitle) sectionEnginesTitle.textContent = i18next.t("deps.sectionEngines");
+  if (autoAddLabel) autoAddLabel.textContent = i18next.t("deps.autoAddSourceLabel");
+  if (autoAddHint) autoAddHint.textContent = i18next.t("deps.autoAddSourceHint");
+  if (autoAddToggle) autoAddToggle.checked = autoAddSourcePref;
   if (notice) notice.textContent = i18next.t("deps.setupRequired");
   if (ytdlpDesc) ytdlpDesc.textContent = i18next.t("deps.ytdlpDesc");
   if (ffmpegDesc) ffmpegDesc.textContent = i18next.t("deps.ffmpegDesc");
@@ -574,6 +596,7 @@ module.exports = {
   showDepsPage,
   hideDepsPage,
   setDepsGating,
+  updateDepsBadge,
   updateDownloadSourceHint,
   updateYtdlpCard,
   updateFfmpegCard,

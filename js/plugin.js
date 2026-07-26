@@ -26,6 +26,8 @@ let isInitialized = false;
 
 // 下载源偏好存储 key
 const DOWNLOAD_SOURCE_KEY = "eagle-video-downloader.downloadSource";
+// 自动设置 Eagle 数据来源 key
+const AUTO_ADD_SOURCE_KEY = "eagle-video-downloader.autoAddSource";
 
 /**
  * 获取用户选择的下载源偏好（'auto' | 'mirror' | 'direct'）
@@ -39,6 +41,21 @@ function getDownloadSourcePref() {
  */
 function setDownloadSourcePref(value) {
   localStorage.setItem(DOWNLOAD_SOURCE_KEY, value);
+}
+
+/**
+ * 获取用户是否自动设置 Eagle 数据来源 (默认 true)
+ */
+function getAutoAddSourcePref() {
+  const val = localStorage.getItem(AUTO_ADD_SOURCE_KEY);
+  return val === null ? true : val === "true";
+}
+
+/**
+ * 保存用户是否自动设置 Eagle 数据来源
+ */
+function setAutoAddSourcePref(value) {
+  localStorage.setItem(AUTO_ADD_SOURCE_KEY, String(value));
 }
 
 // 下载队列
@@ -109,6 +126,14 @@ function setupEventListeners() {
   document.getElementById("depsEntryBtn").addEventListener("click", openDepsPage);
   document.getElementById("depsBackBtn").addEventListener("click", closeDepsPage);
 
+  // 自动设置 Eagle 数据来源切换
+  const autoAddToggle = document.getElementById("autoAddSourceToggle");
+  if (autoAddToggle) {
+    autoAddToggle.addEventListener("change", (e) => {
+      setAutoAddSourcePref(e.target.checked);
+    });
+  }
+
   // 下载源偏好切换
   document.getElementById("depsSourceSelect").addEventListener("change", (e) => {
     setDownloadSourcePref(e.target.value);
@@ -157,7 +182,12 @@ async function initializeBinaries() {
   }
 
   // 缺少必要依赖：进入依赖管理页门槛模式，装齐后自动进入主界面
-  ui.showDepsPage({ gating: true, sourcePref: getDownloadSourcePref() });
+  ui.showDepsPage({
+    gating: true,
+    sourcePref: getDownloadSourcePref(),
+    autoAddSourcePref: getAutoAddSourcePref(),
+  });
+  ui.updateDepsBadge(true);
   loadDepsInfo();
 }
 
@@ -180,10 +210,17 @@ function refreshDepsGatingState() {
       ui.hideDepsPage();
       initializeMainUI();
       checkForUpdateAndNotify();
+    } else {
+      getYtDlpUpdateInfo().then(({ hasUpdate }) => {
+        ui.updateDepsBadge(hasUpdate);
+      }).catch(() => {
+        ui.updateDepsBadge(false);
+      });
     }
   } else {
     isInitialized = false;
     ui.setDepsGating(true);
+    ui.updateDepsBadge(true);
   }
 }
 
@@ -260,7 +297,8 @@ async function executeDownload(item) {
     ui.updateQueueItem(item.id, item);
 
     for (const result of results) {
-      await eagleApi.importToEagle(result.path, result.metadata, item.url);
+      const sourceUrl = getAutoAddSourcePref() ? item.url : undefined;
+      await eagleApi.importToEagle(result.path, result.metadata, sourceUrl);
       downloader.cleanup(result.path);
     }
   } catch (error) {
@@ -310,9 +348,12 @@ async function checkForUpdateAndNotify() {
     const { hasUpdate, latestVersion } = await getYtDlpUpdateInfo();
     if (hasUpdate) {
       ui.showUpdateAvailable(latestVersion);
+      ui.updateDepsBadge(true);
+    } else {
+      ui.updateDepsBadge(!depsReady());
     }
   } catch (e) {
-    // 网络错误时静默忽略，不影响主功能
+    ui.updateDepsBadge(!depsReady());
   }
 }
 
@@ -320,7 +361,10 @@ async function checkForUpdateAndNotify() {
  * 打开依赖管理页面并加载信息
  */
 function openDepsPage() {
-  ui.showDepsPage({ sourcePref: getDownloadSourcePref() });
+  ui.showDepsPage({
+    sourcePref: getDownloadSourcePref(),
+    autoAddSourcePref: getAutoAddSourcePref(),
+  });
   loadDepsInfo();
 }
 

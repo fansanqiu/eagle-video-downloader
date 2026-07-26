@@ -66,7 +66,11 @@
     "done": "✓ Updated to latest version"
   },
   "deps": {
-    "title": "Dependencies",
+    "title": "Settings & Dependencies",
+    "sectionPreferences": "Preferences",
+    "sectionEngines": "Core Engines",
+    "autoAddSourceLabel": "Auto-set Eagle Data Source",
+    "autoAddSourceHint": "When enabled, original web URLs are automatically saved to Eagle items",
     "setupRequired": "These components are required for first-time use. The main view will open automatically once setup is complete.",
     "back": "← Back",
     "ytdlpDesc": "Video extraction & download engine",

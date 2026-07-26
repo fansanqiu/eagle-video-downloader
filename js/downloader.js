@@ -313,6 +313,199 @@ async function extractPinterestSourceUrl(pinterestUrl) {
 }
 
 /**
+ * 从 Pinterest 页面 SSR 数据中提取 pin 完整元数据（类型、图片 URL、标题等）
+ * 用于在 yt-dlp 之前判断 pin 类型，对图片 pin 走直接下载路径
+ */
+async function extractPinterestPinData(pinterestUrl) {
+  try {
+    const html = await fetchPageHtml(pinterestUrl);
+    if (!html) return null;
+
+    // 从 URL 中提取 pin ID
+    const pinIdMatch = pinterestUrl.match(/pin\/([\d]+)/);
+    const pinId = pinIdMatch ? pinIdMatch[1] : null;
+
+    const result = {
+      isVideo: false,
+      videos: null,
+      imageUrl: null,
+      title: '',
+      description: '',
+      link: null,
+      sourceUrl: null, // 第三方视频来源
+    };
+
+    // 从 SSR 数据中查找 pin 的 isVideo 和 videos 字段
+    if (pinId) {
+      const entityIdx = html.indexOf(`"entityId":"${pinId}"`);
+      if (entityIdx !== -1) {
+        const start = Math.max(0, entityIdx - 3000);
+        const end = Math.min(html.length, entityIdx + 3000);
+        const context = html.substring(start, end);
+
+        const isVideoMatch = context.match(/"isVideo"\s*:\s*(true|false)/);
+        if (isVideoMatch) result.isVideo = isVideoMatch[1] === 'true';
+
+        const videosMatch = context.match(/"videos"\s*:\s*(null|\{)/);
+        if (videosMatch && videosMatch[1] !== 'null') result.videos = true;
+
+        const descMatch = context.match(/"description"\s*:\s*"([^"]{0,500})"/);
+        if (descMatch) result.description = descMatch[1];
+
+        const titleMatch = context.match(/"seoTitle"\s*:\s*"([^"]{0,200})"/);
+        if (titleMatch && titleMatch[1]) result.title = titleMatch[1];
+
+        const linkMatch = context.match(/"link"\s*:\s*"([^"]+)"/);
+        if (linkMatch) result.link = linkMatch[1];
+      }
+    }
+
+    // 提取图片 URL：优先从 pin 实体数据附近查找，避免匹配到页面中无关的推荐 pin 图片
+    // Pinterest 图片 URL 格式: i.pinimg.com/{resolution}/{hash}.{ext}
+    // 策略：先在 entityId 附近上下文中查找，再全局兜底
+
+    // 优先从 pin 实体附近（±8000 字符范围）提取图片
+    if (pinId) {
+      const entityIdx = html.indexOf(`"entityId":"${pinId}"`);
+      if (entityIdx !== -1) {
+        const imgSearchStart = Math.max(0, entityIdx - 8000);
+        const imgSearchEnd = Math.min(html.length, entityIdx + 8000);
+        const imgContext = html.substring(imgSearchStart, imgSearchEnd);
+        
+        // 先找 originals 路径
+        const origMatch = imgContext.match(/https?:\/\/i\.pinimg\.com\/originals\/([a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9]+\.(?:jpg|png|gif|webp))/i);
+        if (origMatch) {
+          result.imageUrl = `https://i.pinimg.com/originals/${origMatch[1]}`;
+        } else {
+          // 否则找任意分辨率路径推导 originals
+          const anyMatch = imgContext.match(/https?:\/\/i\.pinimg\.com\/(?:1200x|736x|564x|474x|236x|136x136|60x60|600x315)\/([a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9]+\.(?:jpg|png|gif|webp))/i);
+          if (anyMatch) {
+            result.imageUrl = `https://i.pinimg.com/originals/${anyMatch[1]}`;
+          }
+        }
+      }
+    }
+
+    // 全局兜底
+    if (!result.imageUrl) {
+      const originalsMatch = html.match(/https?:\/\/i\.pinimg\.com\/originals\/[a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9]+\.(?:jpg|png|gif|webp)/i);
+      if (originalsMatch) {
+        result.imageUrl = originalsMatch[0];
+      } else {
+        const anyImgMatch = html.match(/https?:\/\/i\.pinimg\.com\/(?:1200x|736x|564x|474x)\/([a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9]+\.(?:jpg|png|gif|webp))/i);
+        if (anyImgMatch) {
+          result.imageUrl = `https://i.pinimg.com/originals/${anyImgMatch[1]}`;
+        }
+      }
+    }
+
+    // 提取第三方视频来源链接
+    const sourceMatches = html.match(
+      /https?:(?:\/|\\\/)+[^\s"'<>\\]*?(?:instagram\.com|youtube\.com|vimeo\.com|tiktok\.com)[^\s"'<>\\]*/gi
+    );
+    if (sourceMatches && sourceMatches.length > 0) {
+      let cleanUrl = sourceMatches[0].replace(/\\\/|\\/g, "/");
+      cleanUrl = cleanUrl.replace(/\\u0026/g, "&");
+      result.sourceUrl = cleanUrl;
+    }
+
+    // 标题兜底：使用描述的第一行
+    if (!result.title && result.description) {
+      result.title = result.description.split('\n')[0].substring(0, 100);
+    }
+    if (!result.title) result.title = 'Pinterest Pin';
+
+    return result;
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * 通用 HTTP 文件下载器
+ * 优先使用 Chromium fetch（走系统代理），兜底 Node https
+ */
+async function downloadFile(url, outputPath, onProgress) {
+  const dir = path.dirname(outputPath);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+  // 优先使用 fetch（Electron/Chromium 环境支持代理）
+  try {
+    if (typeof fetch === 'function') {
+      const res = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        },
+        redirect: 'follow',
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const contentLength = parseInt(res.headers.get('content-length') || '0', 10);
+      const reader = res.body.getReader();
+      const chunks = [];
+      let received = 0;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        received += value.length;
+        if (onProgress && contentLength > 0) {
+          onProgress({ percent: Math.round((received / contentLength) * 100) });
+        }
+      }
+
+      const buffer = Buffer.concat(chunks);
+      fs.writeFileSync(outputPath, buffer);
+      if (onProgress) onProgress({ percent: 100 });
+      return outputPath;
+    }
+  } catch (e) {
+    // fetch 失败，降级到 Node https
+  }
+
+  // Node https 兜底
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const client = u.protocol === 'https:' ? https : http;
+    const req = client.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      },
+    }, (res) => {
+      // 处理重定向
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        return downloadFile(res.headers.location, outputPath, onProgress).then(resolve).catch(reject);
+      }
+      if (res.statusCode < 200 || res.statusCode >= 400) {
+        return reject(new Error(`HTTP ${res.statusCode}`));
+      }
+
+      const contentLength = parseInt(res.headers['content-length'] || '0', 10);
+      const fileStream = fs.createWriteStream(outputPath);
+      let received = 0;
+
+      res.on('data', (chunk) => {
+        received += chunk.length;
+        if (onProgress && contentLength > 0) {
+          onProgress({ percent: Math.round((received / contentLength) * 100) });
+        }
+      });
+
+      res.pipe(fileStream);
+      fileStream.on('finish', () => {
+        fileStream.close();
+        if (onProgress) onProgress({ percent: 100 });
+        resolve(outputPath);
+      });
+      fileStream.on('error', reject);
+    });
+    req.on('error', reject);
+    req.setTimeout(30000, () => { req.destroy(); reject(new Error('Download timeout')); });
+  });
+}
+
+/**
  * 返回特定站点需要的额外 yt-dlp 参数
  * BiliBili：补充 Referer 和 User-Agent，避免 HTTP 412
  * Pinterest：补充 Referer 和 User-Agent，帮助下发完整 SSR 结构
@@ -380,24 +573,72 @@ function normalizeUrl(url) {
 async function getVideoInfo(url) {
   url = normalizeUrl(url);
 
-  // Pinterest 识别与预处理：若为 Pinterest 链接，先尝试调取第三方来源链接（如 Instagram）
-  let targetUrl = url;
   const isPinterest = url.includes('pinterest.com') || url.includes('pin.it');
+
+  // Pinterest 前置检测：解析 pin 类型，对图片 pin 直接返回图片信息
   if (isPinterest) {
-    const sourceUrl = await extractPinterestSourceUrl(url);
-    if (sourceUrl) {
-      targetUrl = sourceUrl.replace(/\?img_index=\d+/, "");
+    const pinData = await extractPinterestPinData(url);
+    if (pinData) {
+      // 视频 pin 或存在第三方视频来源 → 走 yt-dlp 流程
+      const hasVideoContent = pinData.isVideo || pinData.videos;
+      const hasVideoSource = !!pinData.sourceUrl;
+
+      if (!hasVideoContent && !hasVideoSource) {
+        // 纯图片 pin → 返回图片信息，跳过 yt-dlp
+        if (pinData.imageUrl) {
+          return {
+            type: 'image',
+            imageUrl: pinData.imageUrl,
+            title: pinData.title || 'Pinterest Pin',
+            description: pinData.description || '',
+            duration: 0,
+            thumbnail: pinData.imageUrl,
+            uploader: 'Pinterest',
+            extractor: 'pinterest',
+            webpage_url: url,
+            id: null,
+          };
+        }
+      }
+
+      // 有第三方视频来源 → 替换目标 URL
+      if (hasVideoSource && !hasVideoContent) {
+        const targetUrl = pinData.sourceUrl.replace(/\?img_index=\d+/, "");
+        const args = ["--dump-json", "--no-warnings", ...getSiteArgs(targetUrl), targetUrl];
+        try {
+          const output = await execYtDlp(args);
+          return parseYtDlpOutput(output, targetUrl);
+        } catch (e) {
+          // 第三方来源也无法解析 → 降级为图片下载
+          if (pinData.imageUrl) {
+            return {
+              type: 'image',
+              imageUrl: pinData.imageUrl,
+              title: pinData.title || 'Pinterest Pin',
+              description: pinData.description || '',
+              duration: 0,
+              thumbnail: pinData.imageUrl,
+              uploader: 'Pinterest',
+              extractor: 'pinterest',
+              webpage_url: url,
+              id: null,
+            };
+          }
+          throw e;
+        }
+      }
     }
   }
 
-  const args = ["--dump-json", "--no-warnings", ...getSiteArgs(targetUrl), targetUrl];
+  // 通用路径：直接使用 yt-dlp
+  const args = ["--dump-json", "--no-warnings", ...getSiteArgs(url), url];
 
   let output;
   try {
     output = await execYtDlp(args);
   } catch (err) {
-    // 若原 Pinterest 链接在没查出第三方来源时解析失败，做 Cookie 重试兜底
-    if (isPinterest && targetUrl === url) {
+    // Pinterest 视频 pin yt-dlp 失败时做 Cookie 重试兜底
+    if (isPinterest) {
       const cookieArgs = [...args, "--cookies-from-browser", "chrome"];
       output = await execYtDlp(cookieArgs);
     } else {
@@ -405,6 +646,13 @@ async function getVideoInfo(url) {
     }
   }
 
+  return parseYtDlpOutput(output, url);
+}
+
+/**
+ * 解析 yt-dlp --dump-json 输出
+ */
+function parseYtDlpOutput(output, fallbackUrl) {
   const lines = output.trim().split("\n").filter(Boolean);
   let info = {};
   for (const line of lines) {
@@ -426,7 +674,7 @@ async function getVideoInfo(url) {
     thumbnail: info.thumbnail || null,
     uploader: info.uploader || info.channel || info.playlist_uploader || i18next.t("error.unknown"),
     extractor: info.extractor || i18next.t("error.unknown"),
-    webpage_url: info.webpage_url || targetUrl,
+    webpage_url: info.webpage_url || fallbackUrl,
     id: info.id || null,
   };
 }
@@ -494,6 +742,26 @@ async function downloadVideo(url, onProgress, onStatus, preloadedInfo = null) {
         extractor: (typeof i18next !== "undefined" && i18next.t) ? i18next.t("error.unknown") : "Unknown",
       };
     }
+  }
+
+  // Pinterest 图片 pin 直接下载路径（跳过 yt-dlp）
+  if (videoInfo && videoInfo.type === 'image' && videoInfo.imageUrl) {
+    const outputDir = getTempDir();
+    const sanitizedTitle = sanitizeFilename(videoInfo.title);
+    const urlPath = new URL(videoInfo.imageUrl).pathname;
+    const ext = path.extname(urlPath) || '.jpg';
+    const filename = `${sanitizedTitle}${ext}`;
+    const outputPath = path.join(outputDir, filename);
+
+    if (onStatus) onStatus(i18next.t("ui.downloading"));
+
+    await downloadFile(videoInfo.imageUrl, outputPath, onProgress);
+
+    return [{
+      path: outputPath,
+      metadata: videoInfo,
+      filename: filename,
+    }];
   }
 
   const outputDir = getTempDir();
