@@ -32,7 +32,7 @@ npm run package   # 打包为 视频下载器.eagleplugin（构建 + 清理 bin/
 - `plugin.js` — 入口，处理 Eagle 生命周期钩子，管理下载队列（最多 3 个并发），协调各模块
 - `ui.js` — 队列项渲染与状态更新，输入栏事件，主题切换
 - `downloader.js` — 调用 yt-dlp 子进程，解析实时进度输出，处理多视频下载，Vimeo URL 规范化
-- `binary.js` — yt-dlp 下载与版本检查（对比 GitHub Releases），macOS 隔离属性清除，Eagle 内置 ffmpeg 路径解析
+- `binary.js` — yt-dlp 与 ffmpeg 锁定版本下载与 SHA-256 摘要校验，macOS 隔离属性清除，Eagle 内置 ffmpeg 路径解析
 - `eagle.js` — 调用 `eagle.item.addFromPath()` 将视频导入 Eagle 库
 
 下载流程：用户输入 URL → `getVideoInfo()`（yt-dlp --dump-json）→ `downloadVideo()`（yt-dlp 子进程，临时目录）→ `importToEagle()` → 清理临时文件。
@@ -44,3 +44,19 @@ npm run package   # 打包为 视频下载器.eagleplugin（构建 + 清理 bin/
 ## 发布注意
 
 发布新版本前更新 `Plugin/manifest.json` 中的 `version` 字段。插件 ID 为 `75328212-f4fd-4152-952d-26aa1bfcedf9`，不可更改，否则 Eagle 会将其识别为新插件。
+
+### 依赖版本检查与更新规则
+
+为符合 Eagle 插件审核安全规范，发布前必须手动检查并更新锁定的二进制版本：
+
+1. **yt-dlp**：访问 [yt-dlp Releases](https://github.com/yt-dlp/yt-dlp/releases/latest) 查看最新发布版本。若有新版本：
+   - 更新 `js/binary.js` 中 `PINNED_VERSIONS.ytdlp.version`
+   - 下载该 release 附带的 `SHA2-256SUMS` 文件
+   - 更新各平台二进制（`yt-dlp.exe`、`yt-dlp_macos`、`yt-dlp_linux`）的 `sha256` 摘要值
+
+2. **ffmpeg**：
+   - macOS：检查 `https://github.com/eagle-app/eagle-plugin-ffmpeg` 的文件更新
+   - Windows：检查 `https://github.com/BtbN/ffmpeg-builds/releases` 的构建版本
+   - 若有更新：下载压缩包，计算 SHA-256 哈希，更新 `PINNED_VERSIONS.ffmpeg` 对应条目的 `sha256`
+
+3. 重新运行 `npm run build` 打包 `Plugin/dist/plugin.js` 并随仓库提交。

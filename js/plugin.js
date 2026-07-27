@@ -24,23 +24,25 @@ const ui = require("./ui");
 // 状态管理
 let isInitialized = false;
 
-// 下载源偏好存储 key
-const DOWNLOAD_SOURCE_KEY = "eagle-video-downloader.downloadSource";
+// Cookie 显式授权存储 key
+const COOKIE_CONSENT_KEY = "eagle-video-downloader.cookieConsent";
 // 自动设置 Eagle 数据来源 key
 const AUTO_ADD_SOURCE_KEY = "eagle-video-downloader.autoAddSource";
 
 /**
- * 获取用户选择的下载源偏好（'auto' | 'mirror' | 'direct'）
+ * 获取用户是否授权使用浏览器 Cookie (默认 false)
  */
-function getDownloadSourcePref() {
-  return localStorage.getItem(DOWNLOAD_SOURCE_KEY) || "auto";
+function getCookieConsentPref() {
+  const val = localStorage.getItem(COOKIE_CONSENT_KEY);
+  return val === "true";
 }
 
 /**
- * 保存用户选择的下载源偏好
+ * 保存用户是否授权使用浏览器 Cookie
  */
-function setDownloadSourcePref(value) {
-  localStorage.setItem(DOWNLOAD_SOURCE_KEY, value);
+function setCookieConsentPref(value) {
+  localStorage.setItem(COOKIE_CONSENT_KEY, String(value));
+  downloader.setCookieConsent(Boolean(value));
 }
 
 /**
@@ -103,6 +105,7 @@ eagle.onPluginCreate(async (plugin) => {
   applyTranslations();
   ui.updateTheme();
   setupEventListeners();
+  downloader.setCookieConsent(getCookieConsentPref());
   await initializeBinaries();
 });
 
@@ -134,11 +137,13 @@ function setupEventListeners() {
     });
   }
 
-  // 下载源偏好切换
-  document.getElementById("depsSourceSelect").addEventListener("change", (e) => {
-    setDownloadSourcePref(e.target.value);
-    ui.updateDownloadSourceHint(e.target.value);
-  });
+  // Cookie 授权切换
+  const cookieToggle = document.getElementById("cookieConsentToggle");
+  if (cookieToggle) {
+    cookieToggle.addEventListener("change", (e) => {
+      setCookieConsentPref(e.target.checked);
+    });
+  }
 
   // yt-dlp 操作按钮事件委托
   document.getElementById("ytdlpActions").addEventListener("click", (e) => {
@@ -184,7 +189,7 @@ async function initializeBinaries() {
   // 缺少必要依赖：进入依赖管理页门槛模式，装齐后自动进入主界面
   ui.showDepsPage({
     gating: true,
-    sourcePref: getDownloadSourcePref(),
+    cookieConsentPref: getCookieConsentPref(),
     autoAddSourcePref: getAutoAddSourcePref(),
   });
   ui.updateDepsBadge(true);
@@ -362,7 +367,7 @@ async function checkForUpdateAndNotify() {
  */
 function openDepsPage() {
   ui.showDepsPage({
-    sourcePref: getDownloadSourcePref(),
+    cookieConsentPref: getCookieConsentPref(),
     autoAddSourcePref: getAutoAddSourcePref(),
   });
   loadDepsInfo();
@@ -377,19 +382,8 @@ function closeDepsPage() {
 
 /**
  * 加载并展示各依赖的当前状态
- *
- * 三阶段渲染：
- *   阶段 0（同步，瞬间）：existsSync 判断是否安装 → 立即渲染状态 + 按钮
- *   阶段 1（后台，~200ms）：spawn 子进程取本地版本号 → 补充版本显示
- *   阶段 2（后台，~1-3s）：GitHub API 检查最新版 → 静默更新徽章
- *
- * @param {Object} [options]
- * @param {string} [options.ytdlpKnownLatest] 刚下载完成的 yt-dlp 版本号——
- *   下载源本身就是 GitHub 最新发布版，因此无需再走"检查更新"流程，
- *   直接渲染为 latest 状态，避免安装/更新完成后出现多余的"检查更新中"闪烁
  */
 function loadDepsInfo(options = {}) {
-  // 阶段 0：纯同步，立即渲染
   const ffmpegSource = getFfmpegSource();
   const ytdlpInstalled = isYtDlpInstalled();
 
@@ -412,7 +406,6 @@ function loadDepsInfo(options = {}) {
     loadYtdlpUpdateStatus();
   }
 
-  // ffmpeg 版本独立获取
   if (ffmpegSource) {
     getFfmpegVersion().then((ffmpegVersion) => {
       if (ffmpegSource === 'eagle') ui.updateFfmpegCard('eagle', { version: ffmpegVersion });
@@ -423,23 +416,17 @@ function loadDepsInfo(options = {}) {
 
 /**
  * 检查 yt-dlp 是否有更新并渲染对应卡片状态
- * 阶段 1（后台，~200ms）：spawn 子进程取本地版本号 → 补充版本显示
- * 阶段 2（后台，~1-3s）：GitHub API 检查最新版 → 静默更新徽章
  */
 function loadYtdlpUpdateStatus() {
-  // 同步阶段即刻显示"检查更新中..."，版本号由后台 spawn 补充
   ui.updateYtdlpCard("installed", { checkingUpdate: true });
 
-  // 两条异步线同时启动，互不等待
   const installedVersionP = getInstalledYtDlpVersion();
   const latestVersionP    = getLatestYtDlpVersion();
 
-  // 线 1：本地版本（spawn，~200ms）到了立刻补充版本号
   installedVersionP.then((installedVersion) => {
     if (!installedVersion) { ui.updateYtdlpCard("missing"); return; }
     ui.updateYtdlpCard("installed", { version: installedVersion, checkingUpdate: true });
 
-    // 等最新版本结果到达后更新徽章
     latestVersionP.then((latestVersion) => {
       if (installedVersion !== latestVersion) {
         ui.updateYtdlpCard("outdated", { installedVersion, latestVersion });
@@ -447,7 +434,6 @@ function loadYtdlpUpdateStatus() {
         ui.updateYtdlpCard("latest", { version: installedVersion });
       }
     }).catch(() => {
-      // 网络不通：移除"检查中"提示，保留已安装状态
       ui.updateYtdlpCard("installed", { version: installedVersion });
     });
   }).catch(() => {});
@@ -473,7 +459,7 @@ async function handleFfmpegAction(action) {
   try {
     await downloadFfmpeg((progress) => {
       ui.updateFfmpegCard('busy', { statusText, percent: progress });
-    }, getDownloadSourcePref());
+    });
 
     const version = await getFfmpegVersion();
     ui.updateFfmpegCard('done', { statusText: i18next.t(doneKey), version });
@@ -493,7 +479,7 @@ async function handleYtdlpAction(action) {
   if (action === "uninstall") {
     uninstallYtDlp();
     ui.updateYtdlpCard("missing");
-    ui.hideUpdateBanner();   // 同步隐藏主界面的更新横幅
+    ui.hideUpdateBanner();
     refreshDepsGatingState();
     return;
   }
@@ -516,15 +502,13 @@ async function handleYtdlpAction(action) {
   try {
     await downloadYtDlp((progress) => {
       ui.updateYtdlpCard("busy", { statusText, percent: progress });
-    }, getDownloadSourcePref());
+    });
 
     const version = await getInstalledYtDlpVersion();
     ui.updateYtdlpCard("done", { statusText: i18next.t(doneKey), version });
 
-    // 更新或安装成功后隐藏主界面的更新横幅
     if (action === "update") ui.hideUpdateBanner();
 
-    // 1.5 秒后重新渲染：刚下载的就是最新版，无需再走"检查更新"流程
     setTimeout(() => {
       loadDepsInfo({ ytdlpKnownLatest: version });
       refreshDepsGatingState();
@@ -542,7 +526,7 @@ async function handleUpdateClick() {
   try {
     await downloadYtDlp((progress) => {
       ui.setUpdateBannerUpdating(progress);
-    }, getDownloadSourcePref());
+    });
     ui.setUpdateBannerDone();
     setTimeout(() => ui.hideUpdateBanner(), 2000);
   } catch (e) {

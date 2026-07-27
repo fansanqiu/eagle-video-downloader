@@ -17,19 +17,21 @@
 从 YouTube、Twitter、TikTok、Bilibili 等 1000+ 网站直接下载视频到 Eagle。
 
 英文：
-Download videos from YouTube, Twitter, TikTok, Bilibili and 1000+ other sites directly into Eagle.
+Download video links supported by yt-dlp and import them into Eagle with title, platform tags, and description.
 
 ---
 
 ## 详细说明（中文）
 
-支持从 YouTube、Twitter / X、TikTok、Bilibili、Instagram、Vimeo 等 1000+ 视频网站下载视频，并自动导入到 Eagle 中保存元数据（标题、作者、来源链接等）。
+支持从 YouTube、Twitter / X、TikTok、Bilibili、Instagram、Vimeo 等 1000+ 视频网站下载视频，并自动导入到 Eagle 中保存元数据（标题、平台标签、简介摘要），可选保留原始页面链接。
 
-基于 yt-dlp 构建，使用 Eagle 内置 ffmpeg 处理音视频合并。首次启动时会自动下载 yt-dlp（约 30MB），之后即可直接使用。若 Eagle 内置 ffmpeg 不可用，也可在依赖管理页中一键自动安装。
+基于 yt-dlp 构建，使用 Eagle 内置 ffmpeg 处理音视频合并。首次启动时需要在依赖管理页中点击安装 yt-dlp（约 30MB）和 ffmpeg（若 Eagle 内置版本不可用），组件安装完成后方可使用下载功能。
+
+部分 Pinterest 和 Instagram 视频需要登录状态才能获取。开启"允许使用浏览器 Cookie"选项后，插件会在下载这些平台视频时读取 Chrome 浏览器的登录信息，仅发送至对应平台网站。该选项默认关闭，可随时在设置中撤销。
 
 使用方式：复制视频链接，粘贴到插件输入框，点击下载，完成后自动导入到 Eagle。
 
-内置依赖管理页面，可随时查看 yt-dlp 与 ffmpeg 的版本状态，一键完成安装、更新或重装。启动时自动检查 yt-dlp 是否为最新版，有新版本时顶部横幅提示并支持一键更新。
+内置依赖管理页面，可随时查看 yt-dlp 与 ffmpeg 的版本状态，一键完成安装、更新或重装。支持二进制完整性校验与安全校验。
 
 支持中文和英文界面，下载过程中显示实时进度。
 
@@ -41,13 +43,15 @@ Download videos from YouTube, Twitter, TikTok, Bilibili and 1000+ other sites di
 
 ## 详细说明（英文）
 
-Download videos from YouTube, Twitter / X, TikTok, Bilibili, Instagram, Vimeo, and 1000+ other websites directly into Eagle. Metadata including title, uploader, and source URL is saved automatically.
+Download video links supported by yt-dlp and import them into Eagle with the title, platform tag, and shortened description; optionally retain the original page URL.
 
-Built on yt-dlp and uses Eagle's built-in ffmpeg for audio/video merging. On first launch, yt-dlp is downloaded automatically (~30MB). If Eagle's built-in ffmpeg is unavailable, it can be installed with one click from the dependency management page.
+Built on yt-dlp and uses Eagle's built-in ffmpeg for audio/video merging. On first launch, you need to install yt-dlp (~30 MB) and ffmpeg (if Eagle's built-in version is unavailable) from the dependency management page. Both components must be installed before download features are available.
+
+Some Pinterest and Instagram videos require a logged-in session. When the "Allow browser cookie access" option is enabled, the plugin reads your Chrome login session when downloading videos from these platforms. Cookies are only sent to the respective platform sites. This option is off by default and can be revoked at any time in settings.
 
 How to use: copy a video link, paste it into the plugin input box, click download. The video is imported to Eagle automatically when done.
 
-Includes a built-in dependency management page to check the status of yt-dlp and ffmpeg at any time, with one-click install, update, or reinstall. On startup, the plugin silently checks whether yt-dlp is up to date and shows a banner with a one-click update option when a new version is available.
+Includes a built-in dependency management page to check the status of yt-dlp and ffmpeg at any time, with one-click install, update, or reinstall. Downloaded executables undergo SHA-256 integrity verification.
 
 Supports Chinese and English interfaces with real-time progress display.
 
@@ -66,6 +70,14 @@ This project is based on eagle-twitter-video-downloader by OlivierEstevez (https
 
 ## 版本日志（中文）
 
+v2.4.0
+- 全面加强二进制文件安全：锁定特定审查版本，新增 SHA-256 摘要完整性校验
+- 移除所有第三方镜像源，始终从官方受信任源下载依赖
+- 移除所有 TLS 证书校验跳过逻辑，强制遵循 HTTPS 安全传输
+- 新增 Cookie 显式 Opt-in 授权机制，默认禁用浏览器 Cookie 读取
+- 加强 URL 与网络边界校验：只允许 HTTPS、阻断 localhost、私有及保留 IP 地址
+- 新增压缩包解压路径穿越与符号链接安全防护
+
 v2.3.0
 - 新增依赖管理页面：查看 yt-dlp 与 ffmpeg 状态，支持一键安装、更新、重装、卸载
 - 新增 ffmpeg 自动安装（macOS / Windows）
@@ -73,29 +85,17 @@ v2.3.0
 - 修复 yt-dlp 执行权限丢失问题（EACCES）
 - 修复 Bilibili 下载失败问题（HTTP 412）
 
-v2.2.0
-- 修复 macOS 下 yt-dlp 因隔离属性无法执行的问题
-- 新增"复制错误"按钮方便反馈问题
-- 修复下载 Twitter / X 视频时的 SSL 握手失败问题
-
-v2.1.0
-- 移除运行时下载 ffmpeg 的逻辑，改为直接使用 Eagle 内置 ffmpeg
-- 修复 Windows 平台因 ffmpeg 资源不存在导致初始化失败的问题
-- 修复插件内容无法显示的问题
-- 项目更名为 eagle-video-downloader
-
-v2.0.0
-- 重构为通用视频下载器，底层由 yt-dlp 驱动，支持 1000+ 视频网站
-- 支持多视频批量下载，显示实时下载进度
-- 新增中英文界面切换
-- 新增首次运行自动下载 yt-dlp 的初始化流程
-
-v1.0.0
-- 初始版本，支持从 Twitter / X 下载视频并导入 Eagle
-
 ---
 
 ## 版本日志（英文）
+
+v2.4.0
+- Comprehensive binary security hardening: pinned reviewed versions with SHA-256 integrity verification
+- Removed all third-party executable mirror sources; downloads are restricted to official origins
+- Removed all TLS certificate verification bypass logic, enforcing secure HTTPS connections
+- Added explicit consent flow for browser cookie access, disabled by default
+- Enforced strict URL and network boundary validation: HTTPS-only, blocking localhost and private IP addresses
+- Added path traversal and symbolic link safety checks during archive extraction
 
 v2.3.0
 - Added dependency management page: view yt-dlp and ffmpeg status with one-click install, update, reinstall, and uninstall
@@ -103,23 +103,3 @@ v2.3.0
 - Added yt-dlp version check on startup with one-click update banner
 - Fixed yt-dlp execute permission loss (EACCES)
 - Fixed Bilibili download failures (HTTP 412)
-
-v2.2.0
-- Fixed yt-dlp execution failure on macOS caused by quarantine attribute
-- Added "Copy Error" button for easier bug reporting
-- Fixed SSL handshake failure when downloading Twitter / X videos
-
-v2.1.0
-- Removed runtime ffmpeg download; now uses Eagle's built-in ffmpeg directly
-- Fixed initialization failure on Windows caused by missing ffmpeg asset
-- Fixed blank plugin UI caused by missing i18next dependency
-- Renamed project to eagle-video-downloader
-
-v2.0.0
-- Rebuilt as a universal video downloader powered by yt-dlp, supporting 1000+ sites
-- Added multi-video batch download with real-time progress display
-- Added Chinese/English interface switching
-- Added first-run initialization flow to auto-download yt-dlp
-
-v1.0.0
-- Initial release with Twitter / X video download and Eagle import support

@@ -40,7 +40,7 @@
   "error": {
     "notInitialized": "插件尚未初始化完成",
     "emptyUrl": "请输入视频链接",
-    "invalidUrl": "请输入有效的视频链接",
+    "invalidUrl": "请输入有效的 HTTPS 视频链接",
     "fileNotFound": "下载完成但找不到文件",
     "eagleImportFailed": "导入 Eagle 失败",
     "duplicateFound": "该视频已存在于库中",
@@ -71,6 +71,8 @@
     "sectionEngines": "核心引擎依赖",
     "autoAddSourceLabel": "自动设置 Eagle 数据来源",
     "autoAddSourceHint": "开启后，下载视频时会自动在 Eagle 中记录原始网页 URL",
+    "cookieConsentLabel": "允许使用浏览器 Cookie",
+    "cookieConsentHint": "开启后，下载 Pinterest 和 Instagram 视频时可能读取 Chrome 浏览器的登录信息。Cookie 仅发送至对应平台网站。",
     "setupRequired": "首次使用需要先安装以下组件，安装完成后将自动进入主界面",
     "back": "← 返回",
     "ytdlpDesc": "视频解析与下载引擎",
@@ -100,13 +102,6 @@
     "downloadFailed": "✗ 下载失败",
     "versionInstalled": "版本：{{version}}",
     "versionUpdate": "{{from}}  →  {{to}}",
-    "progressText": "正在下载... {{percent}}%",
-    "sourceLabel": "下载源",
-    "sourceAuto": "自动（推荐）",
-    "sourceMirror": "镜像加速（国内网络推荐）",
-    "sourceDirect": "GitHub 直连（已配置代理/VPN）",
-    "sourceHintAuto": "优先直连 GitHub，失败后自动切换镜像加速重试",
-    "sourceHintMirror": "优先通过国内镜像加速下载，失败后回退到 GitHub 直连",
-    "sourceHintDirect": "始终直连 GitHub，不使用任何镜像，适合已配置代理/VPN 的网络环境"
+    "progressText": "正在下载... {{percent}}%"
   }
 }

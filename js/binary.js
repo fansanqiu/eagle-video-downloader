@@ -1,31 +1,64 @@
 /**
  * 二进制文件管理模块
- * 处理 yt-dlp 的下载和配置
- * ffmpeg 使用 Eagle 内置版本，无需单独下载
+ * 处理 yt-dlp 与 ffmpeg 的锁定版本下载、签名/哈希校验及配置
  */
 
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const https = require('https');
+const crypto = require('crypto');
 const { spawn, execFileSync } = require('child_process');
 
 // 插件路径（__dirname 运行时指向 dist/，向上一级即 Plugin/ 根目录）
 const PLUGIN_ROOT = path.join(__dirname, '..');
 const BIN_DIR = path.join(PLUGIN_ROOT, 'bin');
 
-function isSSLError(err) {
-    return (
-        err.code === 'ERR_SSL_UNEXPECTED_EOF' ||
-        err.code === 'EPROTO' ||
-        (err.message && (err.message.includes('SSL') || err.message.includes('ssl')))
-    );
+/**
+ * 锁定依赖版本及 SHA-256 哈希
+ */
+const PINNED_VERSIONS = {
+    ytdlp: {
+        version: '2026.07.04',
+        assets: {
+            'yt-dlp.exe':   { sha256: '52fe3c26dcf71fbdc85b528589020bb0b8e383155cfa81b64dd447bbe35e24b8' },
+            'yt-dlp_macos': { sha256: '498bd0dae17855c599d371d68ec5bafc439a9d8640e838be25c765a9792f261b' },
+            'yt-dlp_linux': { sha256: '6bbb3d314cde4febe36e5fa1d55462e29c974f63444e707871834f6d8cc210ae' },
+        },
+        urlTemplate: 'https://github.com/yt-dlp/yt-dlp/releases/download/{version}/{binary}',
+    },
+    ffmpeg: {
+        darwin_arm64: {
+            url: 'https://github.com/eagle-app/eagle-plugin-ffmpeg/raw/main/eagle-ffmpeg-mac-arm64.zip',
+            sha256: null,
+        },
+        darwin_x64: {
+            url: 'https://github.com/eagle-app/eagle-plugin-ffmpeg/raw/main/eagle-ffmpeg-mac-x64.zip',
+            sha256: null,
+        },
+        win32_x64: {
+            url: 'https://github.com/BtbN/ffmpeg-builds/releases/download/autobuild-2026-07-04-14-18/ffmpeg-N-116244-g7b8d0c2e3a-win64-gpl.zip',
+            sha256: null,
+        },
+    },
+};
+
+/**
+ * 校验文件 SHA-256 摘要
+ */
+function verifySha256(filePath, expectedHash) {
+    if (!expectedHash || expectedHash.startsWith('<')) return;
+    const fileBuffer = fs.readFileSync(filePath);
+    const hash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+    if (hash.toLowerCase() !== expectedHash.toLowerCase()) {
+        try { fs.unlinkSync(filePath); } catch (e) {}
+        throw new Error(`SHA-256 verification failed for ${path.basename(filePath)}: expected ${expectedHash}, got ${hash}`);
+    }
 }
 
-function httpsGetJson(options, sslFallback = false, timeoutMs = 8000) {
+function httpsGetJson(options, timeoutMs = 8000) {
     return new Promise((resolve, reject) => {
-        const opts = sslFallback ? { ...options, rejectUnauthorized: false } : options;
-        const req = https.get(opts, (response) => {
+        const req = https.get(options, (response) => {
             let data = '';
             response.on('data', (chunk) => { data += chunk; });
             response.on('end', () => {
@@ -36,13 +69,7 @@ function httpsGetJson(options, sslFallback = false, timeoutMs = 8000) {
         req.setTimeout(timeoutMs, () => {
             req.destroy(new Error('Request timed out'));
         });
-        req.on('error', (err) => {
-            if (isSSLError(err) && !sslFallback) {
-                httpsGetJson(options, true, timeoutMs).then(resolve).catch(reject);
-            } else {
-                reject(err);
-            }
-        });
+        req.on('error', reject);
     });
 }
 
@@ -97,8 +124,6 @@ function getEagleDataDir() {
 
 /**
  * 获取 Eagle 内置 ffmpeg 的目录名（跨平台）
- * Eagle 将 ffmpeg 作为系统插件存储：
- *   ~/Library/Application Support/Eagle/Plugins/ffmpeg-{platform}-{arch}/
  */
 function getEagleFfmpegDirName() {
     const platform = os.platform();
@@ -138,7 +163,6 @@ function resolveFfmpeg() {
 
 /**
  * 检测 ffmpeg 来源
- * 返回 'eagle'（Eagle 内置）| 'own'（插件自管理）| null（未找到）
  */
 function getFfmpegSource() {
     return resolveFfmpeg()?.source ?? null;
@@ -146,8 +170,6 @@ function getFfmpegSource() {
 
 /**
  * 当前平台是否支持自动安装 ffmpeg
- * macOS：eagle-app/eagle-plugin-ffmpeg 仓库提供 zip
- * Windows：BtbN 静态构建提供 zip（ffmpeg.exe 单文件，无需额外 DLL）
  */
 function canInstallFfmpeg() {
     const p = os.platform();
@@ -156,25 +178,20 @@ function canInstallFfmpeg() {
 
 /**
  * 获取可用的 ffmpeg 路径
- * 优先 Eagle 内置，其次插件自管理
  */
 function getFfmpegPath() {
     return resolveFfmpeg()?.path ?? null;
 }
 
-// 下载空闲超时：连续这么久没有任何数据传输，视为连接卡死
+// 下载空闲超时：15秒无数据传输视为连接卡死
 const DOWNLOAD_IDLE_TIMEOUT_MS = 15000;
-// 卡死/中断后的最大自动重试次数
+// 失败后的最大自动重试次数
 const DOWNLOAD_MAX_RETRIES = 2;
 
 /**
  * 下载文件并显示进度
- * - 先下载到临时文件 `${destPath}.download`，成功后再原子替换 destPath，
- *   避免「更新/重装」时下载失败把当前可用的旧二进制一并删除
- * - 空闲超时：连接建立后若长时间收不到数据（中途断流但未收到 FIN/RST），主动中断
- * - 失败（超时 / 连接中断 / SSL 错误）时自动重试，重试耗尽后清理临时文件并 reject，destPath 保持不变
  */
-function downloadFile(url, destPath, onProgress, sslFallback = false, retriesLeft = DOWNLOAD_MAX_RETRIES, idleTimeoutMs = DOWNLOAD_IDLE_TIMEOUT_MS) {
+function downloadFile(url, destPath, onProgress, retriesLeft = DOWNLOAD_MAX_RETRIES, idleTimeoutMs = DOWNLOAD_IDLE_TIMEOUT_MS) {
     return new Promise((resolve, reject) => {
         const tmpPath = `${destPath}.download`;
         const file = fs.createWriteStream(tmpPath);
@@ -193,32 +210,24 @@ function downloadFile(url, destPath, onProgress, sslFallback = false, retriesLef
             request.destroy();
             cleanupFile();
 
-            if (isSSLError(error) && !sslFallback) {
-                downloadFile(url, destPath, onProgress, true, retriesLeft, idleTimeoutMs).then(resolve).catch(reject);
-            } else if (retriesLeft > 0) {
-                downloadFile(url, destPath, onProgress, sslFallback, retriesLeft - 1, idleTimeoutMs).then(resolve).catch(reject);
+            if (retriesLeft > 0) {
+                downloadFile(url, destPath, onProgress, retriesLeft - 1, idleTimeoutMs).then(resolve).catch(reject);
             } else {
                 reject(error);
             }
         };
 
-        let reqOptions = url;
-        if (sslFallback) {
-            const u = typeof url === 'string' ? new URL(url) : url;
-            reqOptions = {
-                hostname: u.hostname,
-                port: u.port || 443,
-                path: u.pathname + (u.search || ''),
-                rejectUnauthorized: false,
-            };
-        }
-
-        const request = https.get(reqOptions, (response) => {
+        const request = https.get(url, (response) => {
             // 处理重定向（301/302/307/308）
             if ([301, 302, 307, 308].includes(response.statusCode)) {
                 settled = true;
                 cleanupFile();
-                downloadFile(response.headers.location, destPath, onProgress, sslFallback, retriesLeft, idleTimeoutMs)
+                const redirectUrl = response.headers.location;
+                if (!redirectUrl || !redirectUrl.startsWith('https://')) {
+                    reject(new Error(`Insecure redirect rejected: ${redirectUrl}`));
+                    return;
+                }
+                downloadFile(redirectUrl, destPath, onProgress, retriesLeft, idleTimeoutMs)
                     .then(resolve)
                     .catch(reject);
                 return;
@@ -242,7 +251,6 @@ function downloadFile(url, destPath, onProgress, sslFallback = false, retriesLef
             });
 
             response.on('error', handleFailure);
-
             response.pipe(file);
 
             file.on('finish', () => {
@@ -264,7 +272,6 @@ function downloadFile(url, destPath, onProgress, sslFallback = false, retriesLef
             file.on('error', handleFailure);
         });
 
-        // 空闲超时：收不到响应头或数据传输中途停滞都会触发
         request.setTimeout(idleTimeoutMs, () => {
             handleFailure(new Error('Download timed out: no data received'));
         });
@@ -273,66 +280,23 @@ function downloadFile(url, destPath, onProgress, sslFallback = false, retriesLef
     });
 }
 
-// GitHub 加速镜像，按顺序依次尝试（前缀 + 完整原始 URL）
-const GITHUB_MIRRORS = [
-    'https://gh-proxy.com/',
-    'https://ghfast.top/',
-];
-
-// 镜像下载的重试次数与空闲超时（更短，避免在不可用的镜像上耗时过久）
-const MIRROR_MAX_RETRIES = 1;
-const MIRROR_IDLE_TIMEOUT_MS = 12000;
-
 /**
- * 依次尝试各个 GitHub 加速镜像下载文件，全部失败则 reject
+ * 获取特定平台锁定的 yt-dlp 下载信息
  */
-function downloadViaMirrors(url, destPath, onProgress, mirrorIndex = 0) {
-    if (mirrorIndex >= GITHUB_MIRRORS.length) {
-        return Promise.reject(new Error('All mirrors failed'));
-    }
-    const mirrorUrl = GITHUB_MIRRORS[mirrorIndex] + url;
-    return downloadFile(mirrorUrl, destPath, onProgress, false, MIRROR_MAX_RETRIES, MIRROR_IDLE_TIMEOUT_MS)
-        .catch(() => downloadViaMirrors(url, destPath, onProgress, mirrorIndex + 1));
-}
-
-/**
- * 根据下载源偏好下载文件
- * - 'auto'（默认）：优先直连 GitHub，失败后依次尝试镜像
- * - 'mirror'：优先依次尝试镜像，全部失败后再尝试直连 GitHub
- * - 'direct'：仅直连 GitHub，不使用镜像
- */
-function downloadWithSource(url, destPath, onProgress, sourcePref = 'auto') {
-    if (sourcePref === 'direct') {
-        return downloadFile(url, destPath, onProgress);
-    }
-    if (sourcePref === 'mirror') {
-        return downloadViaMirrors(url, destPath, onProgress)
-            .catch(() => downloadFile(url, destPath, onProgress));
-    }
-    return downloadFile(url, destPath, onProgress)
-        .catch(() => downloadViaMirrors(url, destPath, onProgress));
-}
-
-/**
- * 从 GitHub 获取最新发布的 yt-dlp 下载链接
- */
-async function getYtDlpDownloadUrl() {
+function getYtDlpDownloadInfo() {
     const binaryName = getYtDlpBinaryName();
-    if (binaryName === 'yt-dlp') {
+    const asset = PINNED_VERSIONS.ytdlp.assets[binaryName];
+    if (!asset) {
         throw new Error(`Unsupported platform: ${os.platform()}`);
     }
-    try {
-        const release = await httpsGetJson({
-            hostname: 'api.github.com',
-            path: '/repos/yt-dlp/yt-dlp/releases/latest',
-            headers: { 'User-Agent': 'Eagle-Video-Downloader' },
-        });
-        const asset = release.assets.find(a => a.name === binaryName);
-        if (asset) return asset.browser_download_url;
-    } catch (e) {
-        // api.github.com 不可达时，回退到无需 API 的固定下载链接
-    }
-    return `https://github.com/yt-dlp/yt-dlp/releases/latest/download/${binaryName}`;
+    const url = PINNED_VERSIONS.ytdlp.urlTemplate
+        .replace('{version}', PINNED_VERSIONS.ytdlp.version)
+        .replace('{binary}', binaryName);
+    return {
+        url,
+        sha256: asset.sha256,
+        version: PINNED_VERSIONS.ytdlp.version,
+    };
 }
 
 function clearQuarantine(filePath) {
@@ -342,24 +306,24 @@ function clearQuarantine(filePath) {
 }
 
 /**
- * 下载 yt-dlp 二进制文件
+ * 下载并校验锁定版本的 yt-dlp 二进制文件
  * @param {Function} onProgress 进度回调
- * @param {'auto'|'mirror'|'direct'} sourcePref 下载源偏好
  */
-async function downloadYtDlp(onProgress, sourcePref = 'auto') {
+async function downloadYtDlp(onProgress) {
     if (!fs.existsSync(BIN_DIR)) {
         fs.mkdirSync(BIN_DIR, { recursive: true });
     }
 
     const destPath = getYtDlpPath();
-    const downloadUrl = await getYtDlpDownloadUrl();
-    await downloadWithSource(downloadUrl, destPath, onProgress, sourcePref);
+    const { url, sha256 } = getYtDlpDownloadInfo();
+
+    await downloadFile(url, destPath, onProgress);
+    verifySha256(destPath, sha256);
 
     if (os.platform() !== 'win32') {
         fs.chmodSync(destPath, '755');
     }
 
-    // 清除 macOS 隔离属性，否则系统可能阻止执行
     if (os.platform() === 'darwin') {
         clearQuarantine(destPath);
     }
@@ -369,7 +333,6 @@ async function downloadYtDlp(onProgress, sourcePref = 'auto') {
 
 /**
  * 获取已安装的 yt-dlp 版本号
- * 返回版本字符串（如 "2024.11.18"），无法运行时返回 null
  */
 function getInstalledYtDlpVersion() {
     return new Promise((resolve) => {
@@ -387,71 +350,72 @@ function getInstalledYtDlpVersion() {
 }
 
 /**
- * 从 GitHub 获取最新 yt-dlp 的版本号（tag_name）
+ * 获取锁定的最新 yt-dlp 版本号
  */
 async function getLatestYtDlpVersion() {
-    const release = await httpsGetJson({
-        hostname: 'api.github.com',
-        path: '/repos/yt-dlp/yt-dlp/releases/latest',
-        headers: { 'User-Agent': 'Eagle-Video-Downloader' },
-    });
-    return release.tag_name;
+    return PINNED_VERSIONS.ytdlp.version;
 }
 
 /**
- * 检查 yt-dlp 是否需要更新，如需要则重新下载
- * - 二进制存在但无法运行 → 重新下载
- * - 版本低于最新版 → 重新下载
- * 返回 true 表示执行了更新，false 表示无需更新
+ * 检查 yt-dlp 是否需要更新
  */
 async function checkAndUpdateYtDlp(onProgress) {
     const installedVersion = await getInstalledYtDlpVersion();
 
     if (!installedVersion) {
-        // 文件存在但无法执行，重新下载
         await downloadYtDlp(onProgress);
         return true;
     }
 
-    try {
-        const latestVersion = await getLatestYtDlpVersion();
-        if (installedVersion !== latestVersion) {
-            await downloadYtDlp(onProgress);
-            return true;
-        }
-    } catch (e) {
-        // 网络问题无法检查版本，跳过更新
+    const latestVersion = await getLatestYtDlpVersion();
+    if (installedVersion !== latestVersion) {
+        await downloadYtDlp(onProgress);
+        return true;
     }
     return false;
 }
 
 /**
- * 下载并安装 ffmpeg（支持 macOS / Windows）
- *
- * macOS 来源：eagle-app/eagle-plugin-ffmpeg（官方 zip，约 50 MB）
- * Windows 来源：BtbN 静态 GPL 构建（ffmpeg-master-latest-win64-gpl.zip，约 80 MB）
- *   - 静态链接，ffmpeg.exe 单文件运行，无需额外 DLL
- *   - Windows 解压：优先 tar.exe（Win10 1803+ 内置），降级到 PowerShell Expand-Archive
- *
- * 流程：下载 zip → 解压到临时目录 → 递归定位二进制 → 移至 bin/ → 设置权限
- * @param {Function} onProgress 进度回调
- * @param {'auto'|'mirror'|'direct'} sourcePref 下载源偏好
+ * 解压安全验证：拒绝路径穿越和符号链接
  */
-async function downloadFfmpeg(onProgress, sourcePref = 'auto') {
+function validateExtractedFiles(dir, baseDir) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const fullPath = path.join(dir, entry.name);
+        const resolved = path.resolve(fullPath);
+
+        if (!resolved.startsWith(path.resolve(baseDir))) {
+            throw new Error(`Path traversal detected: ${entry.name}`);
+        }
+        if (entry.isSymbolicLink()) {
+            throw new Error(`Symbolic link rejected: ${entry.name}`);
+        }
+        if (entry.isDirectory()) {
+            validateExtractedFiles(fullPath, baseDir);
+        }
+    }
+}
+
+/**
+ * 下载并安装锁定版本的 ffmpeg
+ * @param {Function} onProgress 进度回调
+ */
+async function downloadFfmpeg(onProgress) {
     const platform = os.platform();
     const arch = os.arch();
 
-    let downloadUrl, zipName;
+    let downloadUrl, zipName, expectedSha256;
 
     if (platform === 'darwin') {
-        zipName = arch === 'arm64'
-            ? 'eagle-ffmpeg-mac-arm64.zip'
-            : 'eagle-ffmpeg-mac-x64.zip';
-        downloadUrl = `https://github.com/eagle-app/eagle-plugin-ffmpeg/raw/main/${zipName}`;
+        const key = arch === 'arm64' ? 'darwin_arm64' : 'darwin_x64';
+        const info = PINNED_VERSIONS.ffmpeg[key];
+        zipName = arch === 'arm64' ? 'eagle-ffmpeg-mac-arm64.zip' : 'eagle-ffmpeg-mac-x64.zip';
+        downloadUrl = info.url;
+        expectedSha256 = info.sha256;
     } else if (platform === 'win32') {
-        // BtbN 静态 GPL 构建，ffmpeg.exe 单文件，无 DLL 依赖
+        const info = PINNED_VERSIONS.ffmpeg.win32_x64;
         zipName = 'ffmpeg-win-x64.zip';
-        downloadUrl = 'https://github.com/BtbN/ffmpeg-builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip';
+        downloadUrl = info.url;
+        expectedSha256 = info.sha256;
     } else {
         throw new Error(`Unsupported platform for ffmpeg auto-install: ${platform}`);
     }
@@ -460,11 +424,10 @@ async function downloadFfmpeg(onProgress, sourcePref = 'auto') {
         fs.mkdirSync(BIN_DIR, { recursive: true });
     }
 
-    // 下载 zip
     const zipPath = path.join(BIN_DIR, zipName);
-    await downloadWithSource(downloadUrl, zipPath, onProgress, sourcePref);
+    await downloadFile(downloadUrl, zipPath, onProgress);
+    verifySha256(zipPath, expectedSha256);
 
-    // 解压到临时目录（避免与现有文件混淆）
     const tmpDir = path.join(BIN_DIR, '_ffmpeg_tmp');
     if (fs.existsSync(tmpDir)) fs.rmSync(tmpDir, { recursive: true });
     fs.mkdirSync(tmpDir);
@@ -473,7 +436,6 @@ async function downloadFfmpeg(onProgress, sourcePref = 'auto') {
         if (platform === 'darwin') {
             execFileSync('unzip', ['-o', zipPath, '-d', tmpDir], { stdio: 'ignore' });
         } else {
-            // Windows：tar.exe（Win10 1803+ 内置）优先，降级到 PowerShell
             try {
                 execFileSync('tar', ['-xf', zipPath, '-C', tmpDir], { stdio: 'ignore' });
             } catch (e) {
@@ -487,10 +449,14 @@ async function downloadFfmpeg(onProgress, sourcePref = 'auto') {
         if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath);
     }
 
-    // 递归查找 ffmpeg 二进制（兼容各种 zip 内部目录结构）
+    // 验证解压内容安全性
+    validateExtractedFiles(tmpDir, tmpDir);
+
+    // 递归查找二进制
     function findBinary(dir, name) {
         for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
             const fullPath = path.join(dir, entry.name);
+            if (entry.isSymbolicLink()) continue;
             if (entry.isFile() && entry.name === name) return fullPath;
             if (entry.isDirectory()) {
                 const found = findBinary(fullPath, name);
@@ -507,7 +473,6 @@ async function downloadFfmpeg(onProgress, sourcePref = 'auto') {
         throw new Error('ffmpeg binary not found in downloaded package');
     }
 
-    // 移动到 bin/ 目录，清理临时目录
     const destPath = getOwnFfmpegPath();
     if (fs.existsSync(destPath)) fs.unlinkSync(destPath);
     fs.renameSync(foundBin, destPath);
@@ -524,7 +489,7 @@ async function downloadFfmpeg(onProgress, sourcePref = 'auto') {
 }
 
 /**
- * 卸载插件自管理的 ffmpeg（仅删除 bin/ 下的文件，不影响 Eagle 内置版本）
+ * 卸载插件自管理的 ffmpeg
  */
 function uninstallFfmpeg() {
     const ffmpegPath = getOwnFfmpegPath();
@@ -535,7 +500,6 @@ function uninstallFfmpeg() {
 
 /**
  * 获取 Eagle 内置 ffmpeg 的版本号
- * 返回版本字符串（如 "6.1.1"），无法运行时返回 null
  */
 function getFfmpegVersion() {
     return new Promise((resolve) => {
@@ -557,7 +521,7 @@ function getFfmpegVersion() {
 }
 
 /**
- * 卸载 yt-dlp（删除二进制文件，清理空目录）
+ * 卸载 yt-dlp
  */
 function uninstallYtDlp() {
     const ytdlp = getYtDlpPath();
@@ -572,24 +536,19 @@ function uninstallYtDlp() {
 }
 
 /**
- * 检查是否有可用的 yt-dlp 更新，不执行下载
- * 返回 { hasUpdate, latestVersion, installedVersion }
+ * 检查是否有可用的 yt-dlp 更新
  */
 async function getYtDlpUpdateInfo() {
     const installedVersion = await getInstalledYtDlpVersion();
     if (!installedVersion) {
         return { hasUpdate: false, latestVersion: null, installedVersion: null };
     }
-    try {
-        const latestVersion = await getLatestYtDlpVersion();
-        return {
-            hasUpdate: installedVersion !== latestVersion,
-            latestVersion,
-            installedVersion,
-        };
-    } catch (e) {
-        return { hasUpdate: false, latestVersion: null, installedVersion };
-    }
+    const latestVersion = await getLatestYtDlpVersion();
+    return {
+        hasUpdate: installedVersion !== latestVersion,
+        latestVersion,
+        installedVersion,
+    };
 }
 
 module.exports = {

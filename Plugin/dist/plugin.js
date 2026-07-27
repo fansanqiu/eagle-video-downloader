@@ -2455,41 +2455,48 @@ var require_binary = __commonJS({
     var path = require("path");
     var fs = require("fs");
     var os = require("os");
-    var https2 = require("https");
+    var https = require("https");
+    var crypto = require("crypto");
     var { spawn, execFileSync } = require("child_process");
     var PLUGIN_ROOT = path.join(__dirname, "..");
     var BIN_DIR = path.join(PLUGIN_ROOT, "bin");
-    function isSSLError(err) {
-      return err.code === "ERR_SSL_UNEXPECTED_EOF" || err.code === "EPROTO" || err.message && (err.message.includes("SSL") || err.message.includes("ssl"));
-    }
-    function httpsGetJson(options, sslFallback = false, timeoutMs = 8e3) {
-      return new Promise((resolve, reject) => {
-        const opts = sslFallback ? { ...options, rejectUnauthorized: false } : options;
-        const req = https2.get(opts, (response) => {
-          let data = "";
-          response.on("data", (chunk) => {
-            data += chunk;
-          });
-          response.on("end", () => {
-            try {
-              resolve(JSON.parse(data));
-            } catch (e) {
-              reject(e);
-            }
-          });
-          response.on("error", reject);
-        });
-        req.setTimeout(timeoutMs, () => {
-          req.destroy(new Error("Request timed out"));
-        });
-        req.on("error", (err) => {
-          if (isSSLError(err) && !sslFallback) {
-            httpsGetJson(options, true, timeoutMs).then(resolve).catch(reject);
-          } else {
-            reject(err);
-          }
-        });
-      });
+    var PINNED_VERSIONS = {
+      ytdlp: {
+        version: "2026.07.04",
+        assets: {
+          "yt-dlp.exe": { sha256: "52fe3c26dcf71fbdc85b528589020bb0b8e383155cfa81b64dd447bbe35e24b8" },
+          "yt-dlp_macos": { sha256: "498bd0dae17855c599d371d68ec5bafc439a9d8640e838be25c765a9792f261b" },
+          "yt-dlp_linux": { sha256: "6bbb3d314cde4febe36e5fa1d55462e29c974f63444e707871834f6d8cc210ae" }
+        },
+        urlTemplate: "https://github.com/yt-dlp/yt-dlp/releases/download/{version}/{binary}"
+      },
+      ffmpeg: {
+        darwin_arm64: {
+          url: "https://github.com/eagle-app/eagle-plugin-ffmpeg/raw/main/eagle-ffmpeg-mac-arm64.zip",
+          sha256: null
+        },
+        darwin_x64: {
+          url: "https://github.com/eagle-app/eagle-plugin-ffmpeg/raw/main/eagle-ffmpeg-mac-x64.zip",
+          sha256: null
+        },
+        win32_x64: {
+          url: "https://github.com/BtbN/ffmpeg-builds/releases/download/autobuild-2026-07-04-14-18/ffmpeg-N-116244-g7b8d0c2e3a-win64-gpl.zip",
+          sha256: null
+        }
+      }
+    };
+    function verifySha256(filePath, expectedHash) {
+      if (!expectedHash || expectedHash.startsWith("<"))
+        return;
+      const fileBuffer = fs.readFileSync(filePath);
+      const hash = crypto.createHash("sha256").update(fileBuffer).digest("hex");
+      if (hash.toLowerCase() !== expectedHash.toLowerCase()) {
+        try {
+          fs.unlinkSync(filePath);
+        } catch (e) {
+        }
+        throw new Error(`SHA-256 verification failed for ${path.basename(filePath)}: expected ${expectedHash}, got ${hash}`);
+      }
     }
     function getFfmpegBinaryName() {
       return os.platform() === "win32" ? "ffmpeg.exe" : "ffmpeg";
@@ -2564,7 +2571,7 @@ var require_binary = __commonJS({
     }
     var DOWNLOAD_IDLE_TIMEOUT_MS = 15e3;
     var DOWNLOAD_MAX_RETRIES = 2;
-    function downloadFile(url, destPath, onProgress, sslFallback = false, retriesLeft = DOWNLOAD_MAX_RETRIES, idleTimeoutMs = DOWNLOAD_IDLE_TIMEOUT_MS) {
+    function downloadFile(url, destPath, onProgress, retriesLeft = DOWNLOAD_MAX_RETRIES, idleTimeoutMs = DOWNLOAD_IDLE_TIMEOUT_MS) {
       return new Promise((resolve, reject) => {
         const tmpPath = `${destPath}.download`;
         const file = fs.createWriteStream(tmpPath);
@@ -2584,29 +2591,22 @@ var require_binary = __commonJS({
           settled = true;
           request.destroy();
           cleanupFile();
-          if (isSSLError(error) && !sslFallback) {
-            downloadFile(url, destPath, onProgress, true, retriesLeft, idleTimeoutMs).then(resolve).catch(reject);
-          } else if (retriesLeft > 0) {
-            downloadFile(url, destPath, onProgress, sslFallback, retriesLeft - 1, idleTimeoutMs).then(resolve).catch(reject);
+          if (retriesLeft > 0) {
+            downloadFile(url, destPath, onProgress, retriesLeft - 1, idleTimeoutMs).then(resolve).catch(reject);
           } else {
             reject(error);
           }
         };
-        let reqOptions = url;
-        if (sslFallback) {
-          const u = typeof url === "string" ? new URL(url) : url;
-          reqOptions = {
-            hostname: u.hostname,
-            port: u.port || 443,
-            path: u.pathname + (u.search || ""),
-            rejectUnauthorized: false
-          };
-        }
-        const request = https2.get(reqOptions, (response) => {
+        const request = https.get(url, (response) => {
           if ([301, 302, 307, 308].includes(response.statusCode)) {
             settled = true;
             cleanupFile();
-            downloadFile(response.headers.location, destPath, onProgress, sslFallback, retriesLeft, idleTimeoutMs).then(resolve).catch(reject);
+            const redirectUrl = response.headers.location;
+            if (!redirectUrl || !redirectUrl.startsWith("https://")) {
+              reject(new Error(`Insecure redirect rejected: ${redirectUrl}`));
+              return;
+            }
+            downloadFile(redirectUrl, destPath, onProgress, retriesLeft, idleTimeoutMs).then(resolve).catch(reject);
             return;
           }
           if (response.statusCode !== 200) {
@@ -2652,45 +2652,18 @@ var require_binary = __commonJS({
         request.on("error", handleFailure);
       });
     }
-    var GITHUB_MIRRORS = [
-      "https://gh-proxy.com/",
-      "https://ghfast.top/"
-    ];
-    var MIRROR_MAX_RETRIES = 1;
-    var MIRROR_IDLE_TIMEOUT_MS = 12e3;
-    function downloadViaMirrors(url, destPath, onProgress, mirrorIndex = 0) {
-      if (mirrorIndex >= GITHUB_MIRRORS.length) {
-        return Promise.reject(new Error("All mirrors failed"));
-      }
-      const mirrorUrl = GITHUB_MIRRORS[mirrorIndex] + url;
-      return downloadFile(mirrorUrl, destPath, onProgress, false, MIRROR_MAX_RETRIES, MIRROR_IDLE_TIMEOUT_MS).catch(() => downloadViaMirrors(url, destPath, onProgress, mirrorIndex + 1));
-    }
-    function downloadWithSource(url, destPath, onProgress, sourcePref = "auto") {
-      if (sourcePref === "direct") {
-        return downloadFile(url, destPath, onProgress);
-      }
-      if (sourcePref === "mirror") {
-        return downloadViaMirrors(url, destPath, onProgress).catch(() => downloadFile(url, destPath, onProgress));
-      }
-      return downloadFile(url, destPath, onProgress).catch(() => downloadViaMirrors(url, destPath, onProgress));
-    }
-    async function getYtDlpDownloadUrl() {
+    function getYtDlpDownloadInfo() {
       const binaryName = getYtDlpBinaryName();
-      if (binaryName === "yt-dlp") {
+      const asset = PINNED_VERSIONS.ytdlp.assets[binaryName];
+      if (!asset) {
         throw new Error(`Unsupported platform: ${os.platform()}`);
       }
-      try {
-        const release = await httpsGetJson({
-          hostname: "api.github.com",
-          path: "/repos/yt-dlp/yt-dlp/releases/latest",
-          headers: { "User-Agent": "Eagle-Video-Downloader" }
-        });
-        const asset = release.assets.find((a) => a.name === binaryName);
-        if (asset)
-          return asset.browser_download_url;
-      } catch (e) {
-      }
-      return `https://github.com/yt-dlp/yt-dlp/releases/latest/download/${binaryName}`;
+      const url = PINNED_VERSIONS.ytdlp.urlTemplate.replace("{version}", PINNED_VERSIONS.ytdlp.version).replace("{binary}", binaryName);
+      return {
+        url,
+        sha256: asset.sha256,
+        version: PINNED_VERSIONS.ytdlp.version
+      };
     }
     function clearQuarantine(filePath) {
       try {
@@ -2698,13 +2671,14 @@ var require_binary = __commonJS({
       } catch (e) {
       }
     }
-    async function downloadYtDlp2(onProgress, sourcePref = "auto") {
+    async function downloadYtDlp2(onProgress) {
       if (!fs.existsSync(BIN_DIR)) {
         fs.mkdirSync(BIN_DIR, { recursive: true });
       }
       const destPath = getYtDlpPath();
-      const downloadUrl = await getYtDlpDownloadUrl();
-      await downloadWithSource(downloadUrl, destPath, onProgress, sourcePref);
+      const { url, sha256 } = getYtDlpDownloadInfo();
+      await downloadFile(url, destPath, onProgress);
+      verifySha256(destPath, sha256);
       if (os.platform() !== "win32") {
         fs.chmodSync(destPath, "755");
       }
@@ -2730,12 +2704,7 @@ var require_binary = __commonJS({
       });
     }
     async function getLatestYtDlpVersion2() {
-      const release = await httpsGetJson({
-        hostname: "api.github.com",
-        path: "/repos/yt-dlp/yt-dlp/releases/latest",
-        headers: { "User-Agent": "Eagle-Video-Downloader" }
-      });
-      return release.tag_name;
+      return PINNED_VERSIONS.ytdlp.version;
     }
     async function checkAndUpdateYtDlp(onProgress) {
       const installedVersion = await getInstalledYtDlpVersion2();
@@ -2743,26 +2712,43 @@ var require_binary = __commonJS({
         await downloadYtDlp2(onProgress);
         return true;
       }
-      try {
-        const latestVersion = await getLatestYtDlpVersion2();
-        if (installedVersion !== latestVersion) {
-          await downloadYtDlp2(onProgress);
-          return true;
-        }
-      } catch (e) {
+      const latestVersion = await getLatestYtDlpVersion2();
+      if (installedVersion !== latestVersion) {
+        await downloadYtDlp2(onProgress);
+        return true;
       }
       return false;
     }
-    async function downloadFfmpeg2(onProgress, sourcePref = "auto") {
+    function validateExtractedFiles(dir, baseDir) {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const fullPath = path.join(dir, entry.name);
+        const resolved = path.resolve(fullPath);
+        if (!resolved.startsWith(path.resolve(baseDir))) {
+          throw new Error(`Path traversal detected: ${entry.name}`);
+        }
+        if (entry.isSymbolicLink()) {
+          throw new Error(`Symbolic link rejected: ${entry.name}`);
+        }
+        if (entry.isDirectory()) {
+          validateExtractedFiles(fullPath, baseDir);
+        }
+      }
+    }
+    async function downloadFfmpeg2(onProgress) {
       const platform = os.platform();
       const arch = os.arch();
-      let downloadUrl, zipName;
+      let downloadUrl, zipName, expectedSha256;
       if (platform === "darwin") {
+        const key = arch === "arm64" ? "darwin_arm64" : "darwin_x64";
+        const info = PINNED_VERSIONS.ffmpeg[key];
         zipName = arch === "arm64" ? "eagle-ffmpeg-mac-arm64.zip" : "eagle-ffmpeg-mac-x64.zip";
-        downloadUrl = `https://github.com/eagle-app/eagle-plugin-ffmpeg/raw/main/${zipName}`;
+        downloadUrl = info.url;
+        expectedSha256 = info.sha256;
       } else if (platform === "win32") {
+        const info = PINNED_VERSIONS.ffmpeg.win32_x64;
         zipName = "ffmpeg-win-x64.zip";
-        downloadUrl = "https://github.com/BtbN/ffmpeg-builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip";
+        downloadUrl = info.url;
+        expectedSha256 = info.sha256;
       } else {
         throw new Error(`Unsupported platform for ffmpeg auto-install: ${platform}`);
       }
@@ -2770,7 +2756,8 @@ var require_binary = __commonJS({
         fs.mkdirSync(BIN_DIR, { recursive: true });
       }
       const zipPath = path.join(BIN_DIR, zipName);
-      await downloadWithSource(downloadUrl, zipPath, onProgress, sourcePref);
+      await downloadFile(downloadUrl, zipPath, onProgress);
+      verifySha256(zipPath, expectedSha256);
       const tmpDir = path.join(BIN_DIR, "_ffmpeg_tmp");
       if (fs.existsSync(tmpDir))
         fs.rmSync(tmpDir, { recursive: true });
@@ -2793,9 +2780,12 @@ var require_binary = __commonJS({
         if (fs.existsSync(zipPath))
           fs.unlinkSync(zipPath);
       }
+      validateExtractedFiles(tmpDir, tmpDir);
       function findBinary(dir, name) {
         for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
           const fullPath = path.join(dir, entry.name);
+          if (entry.isSymbolicLink())
+            continue;
           if (entry.isFile() && entry.name === name)
             return fullPath;
           if (entry.isDirectory()) {
@@ -2870,16 +2860,12 @@ var require_binary = __commonJS({
       if (!installedVersion) {
         return { hasUpdate: false, latestVersion: null, installedVersion: null };
       }
-      try {
-        const latestVersion = await getLatestYtDlpVersion2();
-        return {
-          hasUpdate: installedVersion !== latestVersion,
-          latestVersion,
-          installedVersion
-        };
-      } catch (e) {
-        return { hasUpdate: false, latestVersion: null, installedVersion };
-      }
+      const latestVersion = await getLatestYtDlpVersion2();
+      return {
+        hasUpdate: installedVersion !== latestVersion,
+        latestVersion,
+        installedVersion
+      };
     }
     module2.exports = {
       BIN_DIR,
@@ -2907,9 +2893,91 @@ var require_downloader = __commonJS({
     var path = require("path");
     var fs = require("fs");
     var os = require("os");
+    var dns = require("dns");
+    var net = require("net");
+    var https = require("https");
     var { spawn } = require("child_process");
     var i18next3 = require_i18next();
     var { getYtDlpPath, getFfmpegPath, BIN_DIR, downloadYtDlp: downloadYtDlp2 } = require_binary();
+    var cookieConsentGranted = false;
+    function setCookieConsent(granted) {
+      cookieConsentGranted = Boolean(granted);
+    }
+    function hasCookieConsent() {
+      return cookieConsentGranted;
+    }
+    function isPrivateIp(ip) {
+      if (net.isIPv4(ip)) {
+        const parts = ip.split(".").map(Number);
+        if (parts[0] === 10)
+          return true;
+        if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31)
+          return true;
+        if (parts[0] === 192 && parts[1] === 168)
+          return true;
+        if (parts[0] === 127)
+          return true;
+        if (parts[0] === 169 && parts[1] === 254)
+          return true;
+        if (parts[0] === 0)
+          return true;
+      }
+      if (net.isIPv6(ip)) {
+        const normalized = ip.toLowerCase();
+        if (normalized === "::1" || normalized === "::")
+          return true;
+        if (normalized.startsWith("fe80:"))
+          return true;
+        if (normalized.startsWith("fc") || normalized.startsWith("fd"))
+          return true;
+      }
+      return false;
+    }
+    async function validateUrl(url) {
+      if (typeof url !== "string" || !url.trim()) {
+        throw new Error("Invalid URL");
+      }
+      const parsed = new URL(url);
+      if (parsed.protocol !== "https:") {
+        throw new Error("Only HTTPS URLs are allowed");
+      }
+      const hostname = parsed.hostname.toLowerCase();
+      if (hostname === "localhost" || hostname === "[::1]") {
+        throw new Error("Access to localhost is blocked");
+      }
+      if (net.isIP(hostname)) {
+        if (isPrivateIp(hostname)) {
+          throw new Error(`Access to private IP address ${hostname} is blocked`);
+        }
+      } else {
+        try {
+          const addresses = await dns.promises.resolve(hostname);
+          for (const addr of addresses) {
+            if (isPrivateIp(addr)) {
+              throw new Error(`Hostname ${hostname} resolves to private IP ${addr}`);
+            }
+          }
+        } catch (e) {
+          if (e.message && e.message.includes("blocked"))
+            throw e;
+        }
+      }
+      return parsed;
+    }
+    function matchDomain(url, domains) {
+      try {
+        const host = new URL(url).hostname.toLowerCase();
+        return domains.some((d) => host === d || host.endsWith("." + d));
+      } catch {
+        return false;
+      }
+    }
+    function isPinterestDomain(url) {
+      return matchDomain(url, ["pinterest.com", "pin.it"]);
+    }
+    function isInstagramDomain(url) {
+      return matchDomain(url, ["instagram.com"]);
+    }
     function isCorruptedBinaryError(error) {
       return error.code === "EBADMACHO" || error.code === "ENOEXEC" || error.errno === -88;
     }
@@ -2988,18 +3056,10 @@ var require_downloader = __commonJS({
           if (code === 0) {
             resolve(stdout);
           } else {
-            const isSSLError = stderr.includes("SSL") || stderr.includes("ssl");
-            const alreadySkipping = args.includes("--no-check-certificate");
-            if (isSSLError && !alreadySkipping) {
-              execYtDlp([...args, "--no-check-certificate"], onProgress, onOutput).then(resolve).catch(
-                () => reject(new Error(`${i18next3.t("error.ytdlpExitedWithCode")} ${code}: ${stderr}`))
-              );
-              return;
-            }
             const is412 = stderr.includes("HTTP Error 412");
             const alreadyHasReferer = args.includes("--referer");
             if (is412 && !alreadyHasReferer) {
-              const urlArg2 = args.find((a) => a.startsWith("http"));
+              const urlArg2 = args.find((a) => typeof a === "string" && a.startsWith("https"));
               const extraArgs = urlArg2 ? getSiteArgs(urlArg2) : [];
               if (extraArgs.length > 0) {
                 execYtDlp([...args, ...extraArgs], onProgress, onOutput).then(resolve).catch(
@@ -3009,12 +3069,12 @@ var require_downloader = __commonJS({
               }
             }
             const isNoFormats = stderr.includes("No video formats found") || stderr.includes("[Pinterest]") || stderr.includes("login") || stderr.includes("redirect");
-            const urlArg = args.find((a) => typeof a === "string" && a.startsWith("http"));
-            const isPinterestUrl = urlArg && (urlArg.includes("pinterest.com") || urlArg.includes("pin.it"));
-            const isInstagramUrl = urlArg && urlArg.includes("instagram.com");
+            const urlArg = args.find((a) => typeof a === "string" && a.startsWith("https"));
+            const isPinterestUrl = urlArg && isPinterestDomain(urlArg);
+            const isInstagramUrl = urlArg && isInstagramDomain(urlArg);
             if (isNoFormats && isPinterestUrl) {
               (async () => {
-                const alreadyTriedSource = args.some((a) => typeof a === "string" && (a.includes("instagram.com") || a.includes("youtube.com") || a.includes("vimeo.com") || a.includes("tiktok.com")));
+                const alreadyTriedSource = args.some((a) => typeof a === "string" && (isInstagramDomain(a) || matchDomain(a, ["youtube.com", "vimeo.com", "tiktok.com"])));
                 let extractedSourceUrl = null;
                 if (!alreadyTriedSource) {
                   let sourceUrl = await extractPinterestSourceUrl(urlArg);
@@ -3031,16 +3091,18 @@ var require_downloader = __commonJS({
                       resolve(res);
                       return;
                     } catch (e) {
-                      try {
-                        const res = await execYtDlp([...newArgs, "--cookies-from-browser", "chrome"], onProgress, onOutput, false);
-                        resolve(res);
-                        return;
-                      } catch (e2) {
+                      if (hasCookieConsent()) {
+                        try {
+                          const res = await execYtDlp([...newArgs, "--cookies-from-browser", "chrome"], onProgress, onOutput, false);
+                          resolve(res);
+                          return;
+                        } catch (e2) {
+                        }
                       }
                     }
                   }
                 }
-                if (!extractedSourceUrl) {
+                if (!extractedSourceUrl && hasCookieConsent()) {
                   const alreadyTriedCookies = args.includes("--cookies-from-browser");
                   if (!alreadyTriedCookies) {
                     try {
@@ -3057,7 +3119,7 @@ var require_downloader = __commonJS({
               })();
               return;
             }
-            if (isInstagramUrl && !args.includes("--cookies-from-browser")) {
+            if (isInstagramUrl && !args.includes("--cookies-from-browser") && hasCookieConsent()) {
               execYtDlp([...args, "--cookies-from-browser", "chrome"], onProgress, onOutput, false).then(resolve).catch(
                 () => reject(new Error(`${i18next3.t("error.ytdlpExitedWithCode")} ${code}: ${stderr}`))
               );
@@ -3071,26 +3133,31 @@ var require_downloader = __commonJS({
       });
     }
     function fetchWithRedirect(url, maxRedirects = 5) {
-      return new Promise((resolve) => {
+      return new Promise(async (resolve) => {
         if (maxRedirects <= 0)
           return resolve(null);
         try {
+          await validateUrl(url);
           const u = new URL(url);
-          const client = u.protocol === "https:" ? https : http;
-          const req = client.get(
+          const req = https.get(
             url,
             {
               headers: {
                 "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
               }
             },
-            (res) => {
+            async (res) => {
               if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
                 let redirectUrl = res.headers.location;
                 if (redirectUrl.startsWith("/")) {
                   redirectUrl = `${u.protocol}//${u.host}${redirectUrl}`;
                 }
-                return fetchWithRedirect(redirectUrl, maxRedirects - 1).then(resolve);
+                try {
+                  await validateUrl(redirectUrl);
+                  return fetchWithRedirect(redirectUrl, maxRedirects - 1).then(resolve);
+                } catch (err) {
+                  return resolve(null);
+                }
               }
               let html = "";
               res.on("data", (chunk) => html += chunk);
@@ -3108,6 +3175,7 @@ var require_downloader = __commonJS({
       });
     }
     async function fetchPageHtml(url) {
+      await validateUrl(url);
       try {
         if (typeof fetch === "function") {
           const res = await fetch(url, {
@@ -3131,11 +3199,12 @@ var require_downloader = __commonJS({
         const html = await fetchPageHtml(pinterestUrl);
         if (html) {
           const linkMatches = html.match(
-            /https?:(?:\/|\\\/)+[^\s"'<>\\]*?(?:instagram\.com|youtube\.com|vimeo\.com|tiktok\.com)[^\s"'<>\\]*/gi
+            /https:\/\/[^\s"'<>\\]*?(?:instagram\.com|youtube\.com|vimeo\.com|tiktok\.com)[^\s"'<>\\]*/gi
           );
           if (linkMatches && linkMatches.length > 0) {
             let cleanUrl = linkMatches[0].replace(/\\\/|\\/g, "/");
             cleanUrl = cleanUrl.replace(/\\u0026/g, "&");
+            await validateUrl(cleanUrl);
             return cleanUrl;
           }
         }
@@ -3158,7 +3227,6 @@ var require_downloader = __commonJS({
           description: "",
           link: null,
           sourceUrl: null
-          // 第三方视频来源
         };
         if (pinId) {
           const entityIdx = html.indexOf(`"entityId":"${pinId}"`);
@@ -3189,11 +3257,11 @@ var require_downloader = __commonJS({
             const imgSearchStart = Math.max(0, entityIdx - 8e3);
             const imgSearchEnd = Math.min(html.length, entityIdx + 8e3);
             const imgContext = html.substring(imgSearchStart, imgSearchEnd);
-            const origMatch = imgContext.match(/https?:\/\/i\.pinimg\.com\/originals\/([a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9]+\.(?:jpg|png|gif|webp))/i);
+            const origMatch = imgContext.match(/https:\/\/i\.pinimg\.com\/originals\/([a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9]+\.(?:jpg|png|gif|webp))/i);
             if (origMatch) {
               result.imageUrl = `https://i.pinimg.com/originals/${origMatch[1]}`;
             } else {
-              const anyMatch = imgContext.match(/https?:\/\/i\.pinimg\.com\/(?:1200x|736x|564x|474x|236x|136x136|60x60|600x315)\/([a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9]+\.(?:jpg|png|gif|webp))/i);
+              const anyMatch = imgContext.match(/https:\/\/i\.pinimg\.com\/(?:1200x|736x|564x|474x|236x|136x136|60x60|600x315)\/([a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9]+\.(?:jpg|png|gif|webp))/i);
               if (anyMatch) {
                 result.imageUrl = `https://i.pinimg.com/originals/${anyMatch[1]}`;
               }
@@ -3201,18 +3269,18 @@ var require_downloader = __commonJS({
           }
         }
         if (!result.imageUrl) {
-          const originalsMatch = html.match(/https?:\/\/i\.pinimg\.com\/originals\/[a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9]+\.(?:jpg|png|gif|webp)/i);
+          const originalsMatch = html.match(/https:\/\/i\.pinimg\.com\/originals\/[a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9]+\.(?:jpg|png|gif|webp)/i);
           if (originalsMatch) {
             result.imageUrl = originalsMatch[0];
           } else {
-            const anyImgMatch = html.match(/https?:\/\/i\.pinimg\.com\/(?:1200x|736x|564x|474x)\/([a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9]+\.(?:jpg|png|gif|webp))/i);
+            const anyImgMatch = html.match(/https:\/\/i\.pinimg\.com\/(?:1200x|736x|564x|474x)\/([a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9]+\.(?:jpg|png|gif|webp))/i);
             if (anyImgMatch) {
               result.imageUrl = `https://i.pinimg.com/originals/${anyImgMatch[1]}`;
             }
           }
         }
         const sourceMatches = html.match(
-          /https?:(?:\/|\\\/)+[^\s"'<>\\]*?(?:instagram\.com|youtube\.com|vimeo\.com|tiktok\.com)[^\s"'<>\\]*/gi
+          /https:\/\/[^\s"'<>\\]*?(?:instagram\.com|youtube\.com|vimeo\.com|tiktok\.com)[^\s"'<>\\]*/gi
         );
         if (sourceMatches && sourceMatches.length > 0) {
           let cleanUrl = sourceMatches[0].replace(/\\\/|\\/g, "/");
@@ -3230,6 +3298,7 @@ var require_downloader = __commonJS({
       }
     }
     async function downloadFile(url, outputPath, onProgress) {
+      await validateUrl(url);
       const dir = path.dirname(outputPath);
       if (!fs.existsSync(dir))
         fs.mkdirSync(dir, { recursive: true });
@@ -3266,15 +3335,15 @@ var require_downloader = __commonJS({
       } catch (e) {
       }
       return new Promise((resolve, reject) => {
-        const u = new URL(url);
-        const client = u.protocol === "https:" ? https : http;
-        const req = client.get(url, {
+        const req = https.get(url, {
           headers: {
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
           }
         }, (res) => {
           if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-            return downloadFile(res.headers.location, outputPath, onProgress).then(resolve).catch(reject);
+            let redirectUrl = res.headers.location;
+            validateUrl(redirectUrl).then(() => downloadFile(redirectUrl, outputPath, onProgress)).then(resolve).catch(reject);
+            return;
           }
           if (res.statusCode < 200 || res.statusCode >= 400) {
             return reject(new Error(`HTTP ${res.statusCode}`));
@@ -3356,8 +3425,9 @@ var require_downloader = __commonJS({
       }
     }
     async function getVideoInfo(url) {
+      await validateUrl(url);
       url = normalizeUrl(url);
-      const isPinterest = url.includes("pinterest.com") || url.includes("pin.it");
+      const isPinterest = isPinterestDomain(url);
       if (isPinterest) {
         const pinData = await extractPinterestPinData(url);
         if (pinData) {
@@ -3381,6 +3451,7 @@ var require_downloader = __commonJS({
           }
           if (hasVideoSource && !hasVideoContent) {
             const targetUrl = pinData.sourceUrl.replace(/\?img_index=\d+/, "");
+            await validateUrl(targetUrl);
             const args2 = ["--dump-json", "--no-warnings", ...getSiteArgs(targetUrl), targetUrl];
             try {
               const output2 = await execYtDlp(args2);
@@ -3410,7 +3481,7 @@ var require_downloader = __commonJS({
       try {
         output = await execYtDlp(args);
       } catch (err) {
-        if (isPinterest) {
+        if (isPinterest && hasCookieConsent()) {
           const cookieArgs = [...args, "--cookies-from-browser", "chrome"];
           output = await execYtDlp(cookieArgs);
         } else {
@@ -3471,6 +3542,7 @@ var require_downloader = __commonJS({
       return tempDir;
     }
     async function downloadVideo(url, onProgress, onStatus, preloadedInfo = null) {
+      await validateUrl(url);
       let videoInfo;
       if (preloadedInfo) {
         videoInfo = preloadedInfo;
@@ -3491,6 +3563,7 @@ var require_downloader = __commonJS({
         }
       }
       if (videoInfo && videoInfo.type === "image" && videoInfo.imageUrl) {
+        await validateUrl(videoInfo.imageUrl);
         const outputDir2 = getTempDir();
         const sanitizedTitle2 = sanitizeFilename(videoInfo.title);
         const urlPath = new URL(videoInfo.imageUrl).pathname;
@@ -3509,8 +3582,9 @@ var require_downloader = __commonJS({
       const outputDir = getTempDir();
       const sanitizedTitle = sanitizeFilename(videoInfo.title);
       const outputTemplate = path.join(outputDir, `${sanitizedTitle}_%(autonumber)s.%(ext)s`);
-      let targetUrl = videoInfo && typeof videoInfo.webpage_url === "string" && videoInfo.webpage_url.startsWith("http") ? videoInfo.webpage_url : url;
+      let targetUrl = videoInfo && typeof videoInfo.webpage_url === "string" && videoInfo.webpage_url.startsWith("https") ? videoInfo.webpage_url : url;
       targetUrl = normalizeUrl(targetUrl);
+      await validateUrl(targetUrl);
       const args = [
         targetUrl,
         "-o",
@@ -3552,7 +3626,10 @@ var require_downloader = __commonJS({
     module2.exports = {
       downloadVideo,
       getVideoInfo,
-      cleanup
+      cleanup,
+      setCookieConsent,
+      hasCookieConsent,
+      validateUrl
     };
   }
 });
@@ -3611,7 +3688,7 @@ var require_ui = __commonJS({
     function isValidUrl(string) {
       try {
         const url = new URL(string);
-        return url.protocol === "http:" || url.protocol === "https:";
+        return url.protocol === "https:";
       } catch (_) {
         return false;
       }
@@ -3769,7 +3846,7 @@ var require_ui = __commonJS({
         return;
       badge.classList.toggle("hidden", !hasNotice);
     }
-    function showDepsPage({ gating = false, sourcePref = "auto", autoAddSourcePref = true } = {}) {
+    function showDepsPage({ gating = false, cookieConsentPref = false, autoAddSourcePref = true } = {}) {
       var _a, _b, _c;
       const backBtn = document.getElementById("depsBackBtn");
       const subTitle = document.querySelector(".deps-subheader-title");
@@ -3778,11 +3855,12 @@ var require_ui = __commonJS({
       const autoAddLabel = document.getElementById("autoAddSourceLabel");
       const autoAddHint = document.getElementById("autoAddSourceHint");
       const autoAddToggle = document.getElementById("autoAddSourceToggle");
+      const cookieLabel = document.getElementById("cookieConsentLabel");
+      const cookieHint = document.getElementById("cookieConsentHint");
+      const cookieToggle = document.getElementById("cookieConsentToggle");
       const notice = document.getElementById("depsNotice");
       const ytdlpDesc = document.getElementById("ytdlpDesc");
       const ffmpegDesc = document.getElementById("ffmpegDesc");
-      const sourceLabel = document.getElementById("depsSourceLabel");
-      const sourceSelect = document.getElementById("depsSourceSelect");
       if (backBtn)
         backBtn.textContent = i18next.t("deps.back");
       if (subTitle)
@@ -3797,38 +3875,22 @@ var require_ui = __commonJS({
         autoAddHint.textContent = i18next.t("deps.autoAddSourceHint");
       if (autoAddToggle)
         autoAddToggle.checked = autoAddSourcePref;
+      if (cookieLabel)
+        cookieLabel.textContent = i18next.t("deps.cookieConsentLabel");
+      if (cookieHint)
+        cookieHint.textContent = i18next.t("deps.cookieConsentHint");
+      if (cookieToggle)
+        cookieToggle.checked = cookieConsentPref;
       if (notice)
         notice.textContent = i18next.t("deps.setupRequired");
       if (ytdlpDesc)
         ytdlpDesc.textContent = i18next.t("deps.ytdlpDesc");
       if (ffmpegDesc)
         ffmpegDesc.textContent = i18next.t("deps.ffmpegDesc");
-      if (sourceLabel)
-        sourceLabel.textContent = i18next.t("deps.sourceLabel");
-      if (sourceSelect) {
-        sourceSelect.innerHTML = `
-      <option value="auto">${i18next.t("deps.sourceAuto")}</option>
-      <option value="mirror">${i18next.t("deps.sourceMirror")}</option>
-      <option value="direct">${i18next.t("deps.sourceDirect")}</option>
-    `;
-        sourceSelect.value = sourcePref;
-      }
-      updateDownloadSourceHint(sourcePref);
       (_a = document.getElementById("depsContainer")) == null ? void 0 : _a.classList.remove("hidden");
       (_b = document.getElementById("mainContainer")) == null ? void 0 : _b.classList.add("hidden");
       (_c = document.getElementById("depsEntryBtn")) == null ? void 0 : _c.classList.add("hidden");
       setDepsGating(gating);
-    }
-    function updateDownloadSourceHint(sourcePref) {
-      const hintEl = document.getElementById("depsSourceHint");
-      if (!hintEl)
-        return;
-      const key = {
-        auto: "deps.sourceHintAuto",
-        mirror: "deps.sourceHintMirror",
-        direct: "deps.sourceHintDirect"
-      }[sourcePref] || "deps.sourceHintAuto";
-      hintEl.textContent = i18next.t(key);
     }
     function setDepsGating(gating) {
       var _a, _b;
@@ -4082,7 +4144,6 @@ var require_ui = __commonJS({
       hideDepsPage,
       setDepsGating,
       updateDepsBadge,
-      updateDownloadSourceHint,
       updateYtdlpCard,
       updateFfmpegCard
     };
@@ -4134,7 +4195,7 @@ var require_en = __commonJS({
       error: {
         notInitialized: "Plugin not yet initialized",
         emptyUrl: "Please enter a video URL",
-        invalidUrl: "Please enter a valid video URL",
+        invalidUrl: "Please enter a valid HTTPS video URL",
         fileNotFound: "Download complete but file not found",
         eagleImportFailed: "Failed to import to Eagle",
         duplicateFound: "This video already exists in library",
@@ -4165,6 +4226,8 @@ var require_en = __commonJS({
         sectionEngines: "Core Engines",
         autoAddSourceLabel: "Auto-set Eagle Data Source",
         autoAddSourceHint: "When enabled, original web URLs are automatically saved to Eagle items",
+        cookieConsentLabel: "Allow browser cookie access",
+        cookieConsentHint: "When enabled, downloading Pinterest and Instagram videos may read your Chrome login session. Cookies are only sent to the respective platform sites.",
         setupRequired: "These components are required for first-time use. The main view will open automatically once setup is complete.",
         back: "\u2190 Back",
         ytdlpDesc: "Video extraction & download engine",
@@ -4194,14 +4257,7 @@ var require_en = __commonJS({
         downloadFailed: "\u2717 Download failed",
         versionInstalled: "Version: {{version}}",
         versionUpdate: "{{from}}  \u2192  {{to}}",
-        progressText: "Downloading... {{percent}}%",
-        sourceLabel: "Download Source",
-        sourceAuto: "Automatic (Recommended)",
-        sourceMirror: "Mirror (Recommended for Mainland China)",
-        sourceDirect: "GitHub Direct (if using a proxy/VPN)",
-        sourceHintAuto: "Connects to GitHub directly first, automatically retrying via mirrors if it fails",
-        sourceHintMirror: "Tries mirrors first for faster downloads in Mainland China, falling back to GitHub directly if needed",
-        sourceHintDirect: "Always connects to GitHub directly without using any mirror \u2014 best if you already use a proxy/VPN"
+        progressText: "Downloading... {{percent}}%"
       }
     };
   }
@@ -4252,7 +4308,7 @@ var require_zh_CN = __commonJS({
       error: {
         notInitialized: "\u63D2\u4EF6\u5C1A\u672A\u521D\u59CB\u5316\u5B8C\u6210",
         emptyUrl: "\u8BF7\u8F93\u5165\u89C6\u9891\u94FE\u63A5",
-        invalidUrl: "\u8BF7\u8F93\u5165\u6709\u6548\u7684\u89C6\u9891\u94FE\u63A5",
+        invalidUrl: "\u8BF7\u8F93\u5165\u6709\u6548\u7684 HTTPS \u89C6\u9891\u94FE\u63A5",
         fileNotFound: "\u4E0B\u8F7D\u5B8C\u6210\u4F46\u627E\u4E0D\u5230\u6587\u4EF6",
         eagleImportFailed: "\u5BFC\u5165 Eagle \u5931\u8D25",
         duplicateFound: "\u8BE5\u89C6\u9891\u5DF2\u5B58\u5728\u4E8E\u5E93\u4E2D",
@@ -4283,6 +4339,8 @@ var require_zh_CN = __commonJS({
         sectionEngines: "\u6838\u5FC3\u5F15\u64CE\u4F9D\u8D56",
         autoAddSourceLabel: "\u81EA\u52A8\u8BBE\u7F6E Eagle \u6570\u636E\u6765\u6E90",
         autoAddSourceHint: "\u5F00\u542F\u540E\uFF0C\u4E0B\u8F7D\u89C6\u9891\u65F6\u4F1A\u81EA\u52A8\u5728 Eagle \u4E2D\u8BB0\u5F55\u539F\u59CB\u7F51\u9875 URL",
+        cookieConsentLabel: "\u5141\u8BB8\u4F7F\u7528\u6D4F\u89C8\u5668 Cookie",
+        cookieConsentHint: "\u5F00\u542F\u540E\uFF0C\u4E0B\u8F7D Pinterest \u548C Instagram \u89C6\u9891\u65F6\u53EF\u80FD\u8BFB\u53D6 Chrome \u6D4F\u89C8\u5668\u7684\u767B\u5F55\u4FE1\u606F\u3002Cookie \u4EC5\u53D1\u9001\u81F3\u5BF9\u5E94\u5E73\u53F0\u7F51\u7AD9\u3002",
         setupRequired: "\u9996\u6B21\u4F7F\u7528\u9700\u8981\u5148\u5B89\u88C5\u4EE5\u4E0B\u7EC4\u4EF6\uFF0C\u5B89\u88C5\u5B8C\u6210\u540E\u5C06\u81EA\u52A8\u8FDB\u5165\u4E3B\u754C\u9762",
         back: "\u2190 \u8FD4\u56DE",
         ytdlpDesc: "\u89C6\u9891\u89E3\u6790\u4E0E\u4E0B\u8F7D\u5F15\u64CE",
@@ -4312,14 +4370,7 @@ var require_zh_CN = __commonJS({
         downloadFailed: "\u2717 \u4E0B\u8F7D\u5931\u8D25",
         versionInstalled: "\u7248\u672C\uFF1A{{version}}",
         versionUpdate: "{{from}}  \u2192  {{to}}",
-        progressText: "\u6B63\u5728\u4E0B\u8F7D... {{percent}}%",
-        sourceLabel: "\u4E0B\u8F7D\u6E90",
-        sourceAuto: "\u81EA\u52A8\uFF08\u63A8\u8350\uFF09",
-        sourceMirror: "\u955C\u50CF\u52A0\u901F\uFF08\u56FD\u5185\u7F51\u7EDC\u63A8\u8350\uFF09",
-        sourceDirect: "GitHub \u76F4\u8FDE\uFF08\u5DF2\u914D\u7F6E\u4EE3\u7406/VPN\uFF09",
-        sourceHintAuto: "\u4F18\u5148\u76F4\u8FDE GitHub\uFF0C\u5931\u8D25\u540E\u81EA\u52A8\u5207\u6362\u955C\u50CF\u52A0\u901F\u91CD\u8BD5",
-        sourceHintMirror: "\u4F18\u5148\u901A\u8FC7\u56FD\u5185\u955C\u50CF\u52A0\u901F\u4E0B\u8F7D\uFF0C\u5931\u8D25\u540E\u56DE\u9000\u5230 GitHub \u76F4\u8FDE",
-        sourceHintDirect: "\u59CB\u7EC8\u76F4\u8FDE GitHub\uFF0C\u4E0D\u4F7F\u7528\u4EFB\u4F55\u955C\u50CF\uFF0C\u9002\u5408\u5DF2\u914D\u7F6E\u4EE3\u7406/VPN \u7684\u7F51\u7EDC\u73AF\u5883"
+        progressText: "\u6B63\u5728\u4E0B\u8F7D... {{percent}}%"
       }
     };
   }
@@ -4344,13 +4395,15 @@ var downloader = require_downloader();
 var eagleApi = require_eagle();
 var ui = require_ui();
 var isInitialized = false;
-var DOWNLOAD_SOURCE_KEY = "eagle-video-downloader.downloadSource";
+var COOKIE_CONSENT_KEY = "eagle-video-downloader.cookieConsent";
 var AUTO_ADD_SOURCE_KEY = "eagle-video-downloader.autoAddSource";
-function getDownloadSourcePref() {
-  return localStorage.getItem(DOWNLOAD_SOURCE_KEY) || "auto";
+function getCookieConsentPref() {
+  const val = localStorage.getItem(COOKIE_CONSENT_KEY);
+  return val === "true";
 }
-function setDownloadSourcePref(value) {
-  localStorage.setItem(DOWNLOAD_SOURCE_KEY, value);
+function setCookieConsentPref(value) {
+  localStorage.setItem(COOKIE_CONSENT_KEY, String(value));
+  downloader.setCookieConsent(Boolean(value));
 }
 function getAutoAddSourcePref() {
   const val = localStorage.getItem(AUTO_ADD_SOURCE_KEY);
@@ -4389,6 +4442,7 @@ eagle.onPluginCreate(async (plugin) => {
   applyTranslations();
   ui.updateTheme();
   setupEventListeners();
+  downloader.setCookieConsent(getCookieConsentPref());
   await initializeBinaries();
 });
 eagle.onThemeChanged(() => {
@@ -4407,10 +4461,12 @@ function setupEventListeners() {
       setAutoAddSourcePref(e.target.checked);
     });
   }
-  document.getElementById("depsSourceSelect").addEventListener("change", (e) => {
-    setDownloadSourcePref(e.target.value);
-    ui.updateDownloadSourceHint(e.target.value);
-  });
+  const cookieToggle = document.getElementById("cookieConsentToggle");
+  if (cookieToggle) {
+    cookieToggle.addEventListener("change", (e) => {
+      setCookieConsentPref(e.target.checked);
+    });
+  }
   document.getElementById("ytdlpActions").addEventListener("click", (e) => {
     const btn = e.target.closest("[data-ytdlp-action]");
     if (btn)
@@ -4447,7 +4503,7 @@ async function initializeBinaries() {
   }
   ui.showDepsPage({
     gating: true,
-    sourcePref: getDownloadSourcePref(),
+    cookieConsentPref: getCookieConsentPref(),
     autoAddSourcePref: getAutoAddSourcePref()
   });
   ui.updateDepsBadge(true);
@@ -4581,7 +4637,7 @@ async function checkForUpdateAndNotify() {
 }
 function openDepsPage() {
   ui.showDepsPage({
-    sourcePref: getDownloadSourcePref(),
+    cookieConsentPref: getCookieConsentPref(),
     autoAddSourcePref: getAutoAddSourcePref()
   });
   loadDepsInfo();
@@ -4654,7 +4710,7 @@ async function handleFfmpegAction(action) {
   try {
     await downloadFfmpeg((progress) => {
       ui.updateFfmpegCard("busy", { statusText, percent: progress });
-    }, getDownloadSourcePref());
+    });
     const version = await getFfmpegVersion();
     ui.updateFfmpegCard("done", { statusText: i18next2.t(doneKey), version });
     setTimeout(() => {
@@ -4688,7 +4744,7 @@ async function handleYtdlpAction(action) {
   try {
     await downloadYtDlp((progress) => {
       ui.updateYtdlpCard("busy", { statusText, percent: progress });
-    }, getDownloadSourcePref());
+    });
     const version = await getInstalledYtDlpVersion();
     ui.updateYtdlpCard("done", { statusText: i18next2.t(doneKey), version });
     if (action === "update")
@@ -4706,7 +4762,7 @@ async function handleUpdateClick() {
   try {
     await downloadYtDlp((progress) => {
       ui.setUpdateBannerUpdating(progress);
-    }, getDownloadSourcePref());
+    });
     ui.setUpdateBannerDone();
     setTimeout(() => ui.hideUpdateBanner(), 2e3);
   } catch (e) {

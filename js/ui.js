@@ -40,7 +40,7 @@ function showMainUI() {
 function isValidUrl(string) {
   try {
     const url = new URL(string);
-    return url.protocol === "http:" || url.protocol === "https:";
+    return url.protocol === "https:";
   } catch (_) {
     return false;
   }
@@ -253,7 +253,7 @@ function updateDepsBadge(hasNotice) {
  * @param {'auto'|'mirror'|'direct'} opts.sourcePref - 当前下载源偏好
  * @param {boolean} opts.autoAddSourcePref - 是否自动设置 Eagle 数据来源
  */
-function showDepsPage({ gating = false, sourcePref = 'auto', autoAddSourcePref = true } = {}) {
+function showDepsPage({ gating = false, cookieConsentPref = false, autoAddSourcePref = true } = {}) {
   // 填充静态文本
   const backBtn = document.getElementById("depsBackBtn");
   const subTitle = document.querySelector(".deps-subheader-title");
@@ -262,11 +262,12 @@ function showDepsPage({ gating = false, sourcePref = 'auto', autoAddSourcePref =
   const autoAddLabel = document.getElementById("autoAddSourceLabel");
   const autoAddHint = document.getElementById("autoAddSourceHint");
   const autoAddToggle = document.getElementById("autoAddSourceToggle");
+  const cookieLabel = document.getElementById("cookieConsentLabel");
+  const cookieHint = document.getElementById("cookieConsentHint");
+  const cookieToggle = document.getElementById("cookieConsentToggle");
   const notice = document.getElementById("depsNotice");
   const ytdlpDesc = document.getElementById("ytdlpDesc");
   const ffmpegDesc = document.getElementById("ffmpegDesc");
-  const sourceLabel = document.getElementById("depsSourceLabel");
-  const sourceSelect = document.getElementById("depsSourceSelect");
 
   if (backBtn) backBtn.textContent = i18next.t("deps.back");
   if (subTitle) subTitle.textContent = i18next.t("deps.title");
@@ -275,39 +276,17 @@ function showDepsPage({ gating = false, sourcePref = 'auto', autoAddSourcePref =
   if (autoAddLabel) autoAddLabel.textContent = i18next.t("deps.autoAddSourceLabel");
   if (autoAddHint) autoAddHint.textContent = i18next.t("deps.autoAddSourceHint");
   if (autoAddToggle) autoAddToggle.checked = autoAddSourcePref;
+  if (cookieLabel) cookieLabel.textContent = i18next.t("deps.cookieConsentLabel");
+  if (cookieHint) cookieHint.textContent = i18next.t("deps.cookieConsentHint");
+  if (cookieToggle) cookieToggle.checked = cookieConsentPref;
   if (notice) notice.textContent = i18next.t("deps.setupRequired");
   if (ytdlpDesc) ytdlpDesc.textContent = i18next.t("deps.ytdlpDesc");
   if (ffmpegDesc) ffmpegDesc.textContent = i18next.t("deps.ffmpegDesc");
-  if (sourceLabel) sourceLabel.textContent = i18next.t("deps.sourceLabel");
-  if (sourceSelect) {
-    sourceSelect.innerHTML = `
-      <option value="auto">${i18next.t("deps.sourceAuto")}</option>
-      <option value="mirror">${i18next.t("deps.sourceMirror")}</option>
-      <option value="direct">${i18next.t("deps.sourceDirect")}</option>
-    `;
-    sourceSelect.value = sourcePref;
-  }
-  updateDownloadSourceHint(sourcePref);
 
   document.getElementById("depsContainer")?.classList.remove("hidden");
   document.getElementById("mainContainer")?.classList.add("hidden");
   document.getElementById("depsEntryBtn")?.classList.add("hidden");
   setDepsGating(gating);
-}
-
-/**
- * 更新下载源说明文案
- * @param {'auto'|'mirror'|'direct'} sourcePref
- */
-function updateDownloadSourceHint(sourcePref) {
-  const hintEl = document.getElementById("depsSourceHint");
-  if (!hintEl) return;
-  const key = {
-    auto: "deps.sourceHintAuto",
-    mirror: "deps.sourceHintMirror",
-    direct: "deps.sourceHintDirect",
-  }[sourcePref] || "deps.sourceHintAuto";
-  hintEl.textContent = i18next.t(key);
 }
 
 /**
@@ -597,7 +576,6 @@ module.exports = {
   hideDepsPage,
   setDepsGating,
   updateDepsBadge,
-  updateDownloadSourceHint,
   updateYtdlpCard,
   updateFfmpegCard,
 };

@@ -40,7 +40,7 @@
   "error": {
     "notInitialized": "Plugin not yet initialized",
     "emptyUrl": "Please enter a video URL",
-    "invalidUrl": "Please enter a valid video URL",
+    "invalidUrl": "Please enter a valid HTTPS video URL",
     "fileNotFound": "Download complete but file not found",
     "eagleImportFailed": "Failed to import to Eagle",
     "duplicateFound": "This video already exists in library",
@@ -71,6 +71,8 @@
     "sectionEngines": "Core Engines",
     "autoAddSourceLabel": "Auto-set Eagle Data Source",
     "autoAddSourceHint": "When enabled, original web URLs are automatically saved to Eagle items",
+    "cookieConsentLabel": "Allow browser cookie access",
+    "cookieConsentHint": "When enabled, downloading Pinterest and Instagram videos may read your Chrome login session. Cookies are only sent to the respective platform sites.",
     "setupRequired": "These components are required for first-time use. The main view will open automatically once setup is complete.",
     "back": "← Back",
     "ytdlpDesc": "Video extraction & download engine",
@@ -100,13 +102,6 @@
     "downloadFailed": "✗ Download failed",
     "versionInstalled": "Version: {{version}}",
     "versionUpdate": "{{from}}  →  {{to}}",
-    "progressText": "Downloading... {{percent}}%",
-    "sourceLabel": "Download Source",
-    "sourceAuto": "Automatic (Recommended)",
-    "sourceMirror": "Mirror (Recommended for Mainland China)",
-    "sourceDirect": "GitHub Direct (if using a proxy/VPN)",
-    "sourceHintAuto": "Connects to GitHub directly first, automatically retrying via mirrors if it fails",
-    "sourceHintMirror": "Tries mirrors first for faster downloads in Mainland China, falling back to GitHub directly if needed",
-    "sourceHintDirect": "Always connects to GitHub directly without using any mirror — best if you already use a proxy/VPN"
+    "progressText": "Downloading... {{percent}}%"
   }
 }

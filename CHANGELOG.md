@@ -2,20 +2,32 @@
 
 ## 2.4.0
 
+- 重构安全与隐私机制（符合 Eagle 商店审核要求）：
+  - 锁定二进制依赖版本（yt-dlp 2026.07.04），新增 SHA-256 摘要完整性校验，校验失败自动清除文件
+  - 移除所有第三方代理/镜像源（`gh-proxy.com`、`ghfast.top`），始终从官方受信任源下载
+  - 移除所有 TLS 证书验证跳过逻辑（`NODE_TLS_REJECT_UNAUTHORIZED=0` / `--no-check-certificate`），强制加密传输
+  - 新增浏览器 Cookie 显式 Opt-in 授权机制，默认禁用 Cookie 读取，并在设置中说明使用目的与平台
+  - 加强 URL 与网络边界校验：仅允许 HTTPS，严格阻断 `localhost`、回环、私有网段及链路本地 IP 地址，重定向二次校验
+  - 压缩包解压新增路径穿越（`..`）与符号链接（symlink）安全防护
 - 优化 Pinterest 视频与图片解析降级链：针对 Pinterest 转存视频（如 Instagram 帖子），自动前置提取嵌入的第三方平台源地址；针对纯图片 Pin 自动提取并下载高清原图，解决 `No video formats found` 报错
 - 优化信息提取与下载机制：在 `getVideoInfo` 阶段完成第三方目标地址与 `webpage_url` 的同步转换以及 Pin 类型判断，消除二次重复请求
 - 优化格式兼容策略：在视频下载阶段采用 `bestvideo+bestaudio/best/b` 通用兼容格式
 - 优化代理与网络请求：网页抓取优先接入 Chromium 浏览器网络栈（全局 `fetch`），自动复用 Eagle 的系统代理与 VPN 节点
-- 新增 Instagram 通用 Cookie 静默重试机制，规避匿名访问限制
 - 优化 Pinterest 子域名（如 uk.pinterest.com）重定向自动追踪与 Carousel 帖子的元数据提取
 
 ---
 
+- Comprehensive Security & Privacy Hardening (Eagle Store Review Compliance):
+  - Pinned binary dependencies (yt-dlp 2026.07.04) with SHA-256 integrity verification
+  - Removed all third-party executable mirror sources; downloads are restricted to official trusted origins
+  - Removed all TLS certificate verification bypass logic (`NODE_TLS_REJECT_UNAUTHORIZED=0` / `--no-check-certificate`), enforcing HTTPS connections
+  - Introduced explicit user Opt-in consent flow for browser cookie access, disabled by default
+  - Strict URL and network boundary validation: HTTPS-only, blocking `localhost`, loopback, and private IP ranges, with redirect re-validation
+  - Added path traversal and symbolic link protection during archive extraction
 - Improved Pinterest extraction fallback chain: pre-extracts third-party source URLs (e.g. Instagram) for embedded video pins, and automatically downloads high-resolution images for image-only pins, resolving `No video formats found` errors
 - Optimized metadata extraction and download flow: handles target source URLs and pin type classification during `getVideoInfo` to prevent redundant requests
 - Optimized video format matching strategy with fallback to `bestvideo+bestaudio/best/b`
 - Enhanced network proxy compatibility by utilizing global Chromium `fetch` stack for page fetching
-- Added automatic fallback to browser cookies for Instagram/Pinterest requests requiring authentication
 - Improved handling of Pinterest subdomains (e.g. uk.pinterest.com) and multi-media carousel pins
 
 
