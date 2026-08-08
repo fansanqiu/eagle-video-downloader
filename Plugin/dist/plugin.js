@@ -2449,6 +2449,98 @@ var require_i18next = __commonJS({
   }
 });
 
+// js/net-guard.js
+var require_net_guard = __commonJS({
+  "js/net-guard.js"(exports2, module2) {
+    var net = require("net");
+    var dns = require("dns");
+    function isPrivateIp(ip) {
+      if (net.isIPv4(ip)) {
+        const parts = ip.split(".").map(Number);
+        if (parts[0] === 10)
+          return true;
+        if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31)
+          return true;
+        if (parts[0] === 192 && parts[1] === 168)
+          return true;
+        if (parts[0] === 127)
+          return true;
+        if (parts[0] === 169 && parts[1] === 254)
+          return true;
+        if (parts[0] === 0)
+          return true;
+      }
+      if (net.isIPv6(ip)) {
+        const normalized = ip.toLowerCase();
+        if (normalized === "::1" || normalized === "::")
+          return true;
+        if (normalized.startsWith("fe80:"))
+          return true;
+        if (normalized.startsWith("fc") || normalized.startsWith("fd"))
+          return true;
+        if (normalized.startsWith("::ffff:")) {
+          const mapped = normalized.slice(7);
+          if (net.isIPv4(mapped))
+            return isPrivateIp(mapped);
+        }
+        if (normalized.startsWith("2001:db8:"))
+          return true;
+        if (normalized.startsWith("2001:") && (normalized.startsWith("2001:0:") || normalized === "2001::"))
+          return true;
+        if (normalized.startsWith("2002:"))
+          return true;
+        if (normalized.startsWith("ff"))
+          return true;
+        if (normalized.startsWith("100:"))
+          return true;
+      }
+      return false;
+    }
+    async function validateUrl(url) {
+      if (typeof url !== "string" || !url.trim()) {
+        throw new Error("Invalid URL");
+      }
+      const parsed = new URL(url);
+      if (parsed.protocol !== "https:") {
+        throw new Error("Only HTTPS URLs are allowed");
+      }
+      const hostname = parsed.hostname.toLowerCase();
+      if (hostname === "localhost" || hostname === "[::1]") {
+        throw new Error("Access to localhost is blocked");
+      }
+      if (net.isIP(hostname)) {
+        if (isPrivateIp(hostname)) {
+          throw new Error(`Access to private IP address ${hostname} is blocked`);
+        }
+      } else {
+        try {
+          const [v4Addrs, v6Addrs] = await Promise.all([
+            dns.promises.resolve4(hostname).catch(() => []),
+            dns.promises.resolve6(hostname).catch(() => [])
+          ]);
+          const addresses = [...v4Addrs, ...v6Addrs];
+          if (addresses.length === 0) {
+            throw new Error(`DNS resolution returned no addresses for ${hostname}`);
+          }
+          const publicAddrs = addresses.filter((addr) => !isPrivateIp(addr));
+          if (publicAddrs.length === 0) {
+            throw new Error(`All resolved addresses for ${hostname} are private, access blocked`);
+          }
+        } catch (e) {
+          if (e.message && (e.message.includes("private") || e.message.includes("blocked") || e.message.includes("no addresses")))
+            throw e;
+          throw new Error(`DNS resolution failed for ${hostname}: ${e.message}`);
+        }
+      }
+      return parsed;
+    }
+    module2.exports = {
+      isPrivateIp,
+      validateUrl
+    };
+  }
+});
+
 // js/binary.js
 var require_binary = __commonJS({
   "js/binary.js"(exports2, module2) {
@@ -2458,6 +2550,7 @@ var require_binary = __commonJS({
     var https = require("https");
     var crypto = require("crypto");
     var { spawn, execFileSync } = require("child_process");
+    var { validateUrl } = require_net_guard();
     var PLUGIN_ROOT = path.join(__dirname, "..");
     var BIN_DIR = path.join(PLUGIN_ROOT, "bin");
     var PINNED_VERSIONS = {
@@ -2469,25 +2562,16 @@ var require_binary = __commonJS({
           "yt-dlp_linux": { sha256: "6bbb3d314cde4febe36e5fa1d55462e29c974f63444e707871834f6d8cc210ae" }
         },
         urlTemplate: "https://github.com/yt-dlp/yt-dlp/releases/download/{version}/{binary}"
-      },
-      ffmpeg: {
-        darwin_arm64: {
-          url: "https://github.com/eagle-app/eagle-plugin-ffmpeg/raw/main/eagle-ffmpeg-mac-arm64.zip",
-          sha256: null
-        },
-        darwin_x64: {
-          url: "https://github.com/eagle-app/eagle-plugin-ffmpeg/raw/main/eagle-ffmpeg-mac-x64.zip",
-          sha256: null
-        },
-        win32_x64: {
-          url: "https://github.com/BtbN/ffmpeg-builds/releases/download/autobuild-2026-07-04-14-18/ffmpeg-N-116244-g7b8d0c2e3a-win64-gpl.zip",
-          sha256: null
-        }
       }
     };
     function verifySha256(filePath, expectedHash) {
-      if (!expectedHash || expectedHash.startsWith("<"))
-        return;
+      if (!expectedHash || typeof expectedHash !== "string" || expectedHash.length !== 64 || expectedHash.startsWith("<")) {
+        try {
+          fs.unlinkSync(filePath);
+        } catch (e) {
+        }
+        throw new Error(`SHA-256 verification failed for ${path.basename(filePath)}: hash missing or invalid`);
+      }
       const fileBuffer = fs.readFileSync(filePath);
       const hash = crypto.createHash("sha256").update(fileBuffer).digest("hex");
       if (hash.toLowerCase() !== expectedHash.toLowerCase()) {
@@ -2545,25 +2629,15 @@ var require_binary = __commonJS({
     function getEagleFfmpegPath() {
       return path.join(getEagleDataDir(), "Plugins", getEagleFfmpegDirName(), getFfmpegBinaryName());
     }
-    function getOwnFfmpegPath() {
-      return path.join(BIN_DIR, getFfmpegBinaryName());
-    }
     function resolveFfmpeg() {
       const eagle2 = getEagleFfmpegPath();
       if (fs.existsSync(eagle2))
         return { source: "eagle", path: eagle2 };
-      const own = getOwnFfmpegPath();
-      if (fs.existsSync(own))
-        return { source: "own", path: own };
       return null;
     }
     function getFfmpegSource2() {
       var _a;
       return ((_a = resolveFfmpeg()) == null ? void 0 : _a.source) ?? null;
-    }
-    function canInstallFfmpeg2() {
-      const p = os.platform();
-      return p === "darwin" || p === "win32";
     }
     function getFfmpegPath() {
       var _a;
@@ -2602,11 +2676,11 @@ var require_binary = __commonJS({
             settled = true;
             cleanupFile();
             const redirectUrl = response.headers.location;
-            if (!redirectUrl || !redirectUrl.startsWith("https://")) {
-              reject(new Error(`Insecure redirect rejected: ${redirectUrl}`));
+            if (!redirectUrl) {
+              reject(new Error("Redirect missing location header"));
               return;
             }
-            downloadFile(redirectUrl, destPath, onProgress, retriesLeft, idleTimeoutMs).then(resolve).catch(reject);
+            validateUrl(redirectUrl).then(() => downloadFile(redirectUrl, destPath, onProgress, retriesLeft, idleTimeoutMs)).then(resolve).catch(reject);
             return;
           }
           if (response.statusCode !== 200) {
@@ -2719,108 +2793,6 @@ var require_binary = __commonJS({
       }
       return false;
     }
-    function validateExtractedFiles(dir, baseDir) {
-      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-        const fullPath = path.join(dir, entry.name);
-        const resolved = path.resolve(fullPath);
-        if (!resolved.startsWith(path.resolve(baseDir))) {
-          throw new Error(`Path traversal detected: ${entry.name}`);
-        }
-        if (entry.isSymbolicLink()) {
-          throw new Error(`Symbolic link rejected: ${entry.name}`);
-        }
-        if (entry.isDirectory()) {
-          validateExtractedFiles(fullPath, baseDir);
-        }
-      }
-    }
-    async function downloadFfmpeg2(onProgress) {
-      const platform = os.platform();
-      const arch = os.arch();
-      let downloadUrl, zipName, expectedSha256;
-      if (platform === "darwin") {
-        const key = arch === "arm64" ? "darwin_arm64" : "darwin_x64";
-        const info = PINNED_VERSIONS.ffmpeg[key];
-        zipName = arch === "arm64" ? "eagle-ffmpeg-mac-arm64.zip" : "eagle-ffmpeg-mac-x64.zip";
-        downloadUrl = info.url;
-        expectedSha256 = info.sha256;
-      } else if (platform === "win32") {
-        const info = PINNED_VERSIONS.ffmpeg.win32_x64;
-        zipName = "ffmpeg-win-x64.zip";
-        downloadUrl = info.url;
-        expectedSha256 = info.sha256;
-      } else {
-        throw new Error(`Unsupported platform for ffmpeg auto-install: ${platform}`);
-      }
-      if (!fs.existsSync(BIN_DIR)) {
-        fs.mkdirSync(BIN_DIR, { recursive: true });
-      }
-      const zipPath = path.join(BIN_DIR, zipName);
-      await downloadFile(downloadUrl, zipPath, onProgress);
-      verifySha256(zipPath, expectedSha256);
-      const tmpDir = path.join(BIN_DIR, "_ffmpeg_tmp");
-      if (fs.existsSync(tmpDir))
-        fs.rmSync(tmpDir, { recursive: true });
-      fs.mkdirSync(tmpDir);
-      try {
-        if (platform === "darwin") {
-          execFileSync("unzip", ["-o", zipPath, "-d", tmpDir], { stdio: "ignore" });
-        } else {
-          try {
-            execFileSync("tar", ["-xf", zipPath, "-C", tmpDir], { stdio: "ignore" });
-          } catch (e) {
-            execFileSync("powershell", [
-              "-NoProfile",
-              "-Command",
-              `Expand-Archive -LiteralPath "${zipPath}" -DestinationPath "${tmpDir}" -Force`
-            ], { stdio: "ignore" });
-          }
-        }
-      } finally {
-        if (fs.existsSync(zipPath))
-          fs.unlinkSync(zipPath);
-      }
-      validateExtractedFiles(tmpDir, tmpDir);
-      function findBinary(dir, name) {
-        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-          const fullPath = path.join(dir, entry.name);
-          if (entry.isSymbolicLink())
-            continue;
-          if (entry.isFile() && entry.name === name)
-            return fullPath;
-          if (entry.isDirectory()) {
-            const found = findBinary(fullPath, name);
-            if (found)
-              return found;
-          }
-        }
-        return null;
-      }
-      const binaryName = getFfmpegBinaryName();
-      const foundBin = findBinary(tmpDir, binaryName);
-      if (!foundBin) {
-        fs.rmSync(tmpDir, { recursive: true });
-        throw new Error("ffmpeg binary not found in downloaded package");
-      }
-      const destPath = getOwnFfmpegPath();
-      if (fs.existsSync(destPath))
-        fs.unlinkSync(destPath);
-      fs.renameSync(foundBin, destPath);
-      fs.rmSync(tmpDir, { recursive: true });
-      if (platform !== "win32") {
-        fs.chmodSync(destPath, "755");
-      }
-      if (platform === "darwin") {
-        clearQuarantine(destPath);
-      }
-      return destPath;
-    }
-    function uninstallFfmpeg2() {
-      const ffmpegPath = getOwnFfmpegPath();
-      if (fs.existsSync(ffmpegPath)) {
-        fs.unlinkSync(ffmpegPath);
-      }
-    }
     function getFfmpegVersion2() {
       return new Promise((resolve) => {
         const ffmpegPath = getFfmpegPath();
@@ -2873,16 +2845,14 @@ var require_binary = __commonJS({
       getFfmpegPath,
       getFfmpegVersion: getFfmpegVersion2,
       getFfmpegSource: getFfmpegSource2,
-      canInstallFfmpeg: canInstallFfmpeg2,
       isYtDlpInstalled: isYtDlpInstalled2,
       downloadYtDlp: downloadYtDlp2,
       uninstallYtDlp: uninstallYtDlp2,
-      downloadFfmpeg: downloadFfmpeg2,
-      uninstallFfmpeg: uninstallFfmpeg2,
       checkAndUpdateYtDlp,
       getInstalledYtDlpVersion: getInstalledYtDlpVersion2,
       getLatestYtDlpVersion: getLatestYtDlpVersion2,
-      getYtDlpUpdateInfo: getYtDlpUpdateInfo2
+      getYtDlpUpdateInfo: getYtDlpUpdateInfo2,
+      verifySha256
     };
   }
 });
@@ -2893,76 +2863,17 @@ var require_downloader = __commonJS({
     var path = require("path");
     var fs = require("fs");
     var os = require("os");
-    var dns = require("dns");
-    var net = require("net");
     var https = require("https");
     var { spawn } = require("child_process");
     var i18next3 = require_i18next();
     var { getYtDlpPath, getFfmpegPath, BIN_DIR, downloadYtDlp: downloadYtDlp2 } = require_binary();
+    var { isPrivateIp, validateUrl } = require_net_guard();
     var cookieConsentGranted = false;
     function setCookieConsent(granted) {
       cookieConsentGranted = Boolean(granted);
     }
     function hasCookieConsent() {
       return cookieConsentGranted;
-    }
-    function isPrivateIp(ip) {
-      if (net.isIPv4(ip)) {
-        const parts = ip.split(".").map(Number);
-        if (parts[0] === 10)
-          return true;
-        if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31)
-          return true;
-        if (parts[0] === 192 && parts[1] === 168)
-          return true;
-        if (parts[0] === 127)
-          return true;
-        if (parts[0] === 169 && parts[1] === 254)
-          return true;
-        if (parts[0] === 0)
-          return true;
-      }
-      if (net.isIPv6(ip)) {
-        const normalized = ip.toLowerCase();
-        if (normalized === "::1" || normalized === "::")
-          return true;
-        if (normalized.startsWith("fe80:"))
-          return true;
-        if (normalized.startsWith("fc") || normalized.startsWith("fd"))
-          return true;
-      }
-      return false;
-    }
-    async function validateUrl(url) {
-      if (typeof url !== "string" || !url.trim()) {
-        throw new Error("Invalid URL");
-      }
-      const parsed = new URL(url);
-      if (parsed.protocol !== "https:") {
-        throw new Error("Only HTTPS URLs are allowed");
-      }
-      const hostname = parsed.hostname.toLowerCase();
-      if (hostname === "localhost" || hostname === "[::1]") {
-        throw new Error("Access to localhost is blocked");
-      }
-      if (net.isIP(hostname)) {
-        if (isPrivateIp(hostname)) {
-          throw new Error(`Access to private IP address ${hostname} is blocked`);
-        }
-      } else {
-        try {
-          const addresses = await dns.promises.resolve(hostname);
-          for (const addr of addresses) {
-            if (isPrivateIp(addr)) {
-              throw new Error(`Hostname ${hostname} resolves to private IP ${addr}`);
-            }
-          }
-        } catch (e) {
-          if (e.message && e.message.includes("blocked"))
-            throw e;
-        }
-      }
-      return parsed;
     }
     function matchDomain(url, domains) {
       try {
@@ -3176,22 +3087,6 @@ var require_downloader = __commonJS({
     }
     async function fetchPageHtml(url) {
       await validateUrl(url);
-      try {
-        if (typeof fetch === "function") {
-          const res = await fetch(url, {
-            headers: {
-              "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            },
-            redirect: "follow"
-          });
-          if (res.status >= 200 && res.status < 400) {
-            const text = await res.text();
-            if (text && text.length > 0)
-              return text;
-          }
-        }
-      } catch (e) {
-      }
       return await fetchWithRedirect(url);
     }
     async function extractPinterestSourceUrl(pinterestUrl) {
@@ -3308,8 +3203,16 @@ var require_downloader = __commonJS({
             headers: {
               "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             },
-            redirect: "follow"
+            redirect: "manual"
           });
+          if (res.status >= 300 && res.status < 400) {
+            const loc = res.headers.get("location");
+            if (loc) {
+              await validateUrl(loc);
+              return downloadFile(loc, outputPath, onProgress);
+            }
+            throw new Error(`Redirect missing location header (HTTP ${res.status})`);
+          }
           if (!res.ok)
             throw new Error(`HTTP ${res.status}`);
           const contentLength = parseInt(res.headers.get("content-length") || "0", 10);
@@ -3333,6 +3236,9 @@ var require_downloader = __commonJS({
           return outputPath;
         }
       } catch (e) {
+        if (e.message && (e.message.includes("HTTP") || e.message.includes("Redirect") || e.message.includes("blocked") || e.message.includes("DNS"))) {
+          throw e;
+        }
       }
       return new Promise((resolve, reject) => {
         const req = https.get(url, {
@@ -3452,7 +3358,7 @@ var require_downloader = __commonJS({
           if (hasVideoSource && !hasVideoContent) {
             const targetUrl = pinData.sourceUrl.replace(/\?img_index=\d+/, "");
             await validateUrl(targetUrl);
-            const args2 = ["--dump-json", "--no-warnings", ...getSiteArgs(targetUrl), targetUrl];
+            const args2 = ["--dump-json", "--no-warnings", "--force-ipv4", ...getSiteArgs(targetUrl), targetUrl];
             try {
               const output2 = await execYtDlp(args2);
               return parseYtDlpOutput(output2, targetUrl);
@@ -3476,7 +3382,7 @@ var require_downloader = __commonJS({
           }
         }
       }
-      const args = ["--dump-json", "--no-warnings", ...getSiteArgs(url), url];
+      const args = ["--dump-json", "--no-warnings", "--force-ipv4", ...getSiteArgs(url), url];
       let output;
       try {
         output = await execYtDlp(args);
@@ -3594,6 +3500,7 @@ var require_downloader = __commonJS({
         "--merge-output-format",
         "mp4",
         "--no-warnings",
+        "--force-ipv4",
         ...getSiteArgs(targetUrl)
       ];
       const ffmpeg = getFfmpegPath();
@@ -4004,7 +3911,7 @@ var require_ui = __commonJS({
       }
     }
     function updateFfmpegCard(state, data = {}) {
-      const { statusEl, detailEl, progressWrap, progressFill, actionsEl } = getDepCardEls("ffmpeg");
+      const { statusEl, detailEl, progressWrap, actionsEl } = getDepCardEls("ffmpeg");
       if (!statusEl)
         return;
       statusEl.className = "dep-status";
@@ -4027,64 +3934,16 @@ var require_ui = __commonJS({
           if (actionsEl)
             actionsEl.innerHTML = "";
           break;
-        case "installed":
-          statusEl.classList.add("ok");
-          statusEl.textContent = i18next.t("deps.latest");
-          if (detailEl) {
-            detailEl.textContent = data.version ? i18next.t("deps.versionInstalled", { version: data.version }) : "";
-          }
-          if (actionsEl)
-            actionsEl.innerHTML = `
-        <button class="dep-btn" data-ffmpeg-action="reinstall">${i18next.t("deps.reinstall")}</button>
-        <button class="dep-btn danger" data-ffmpeg-action="uninstall">${i18next.t("deps.uninstall")}</button>
-      `;
-          break;
         case "missing":
+        default:
           statusEl.classList.add("missing");
           statusEl.textContent = i18next.t("deps.notFound");
           if (detailEl) {
-            detailEl.textContent = data.canInstall ? i18next.t("deps.ffmpegNotFoundHint") : i18next.t("deps.ffmpegUnsupported");
+            detailEl.textContent = i18next.t("deps.ffmpegNotFoundHint");
           }
           if (actionsEl) {
-            actionsEl.innerHTML = data.canInstall ? `
-          <button class="dep-btn primary" data-ffmpeg-action="install">${i18next.t("deps.install")}</button>
-        ` : "";
+            actionsEl.innerHTML = `<button class="dep-btn primary" data-ffmpeg-action="open-store">${i18next.t("deps.installFfmpegDep")}</button>`;
           }
-          break;
-        case "error":
-          statusEl.classList.add("missing");
-          statusEl.textContent = i18next.t("deps.downloadFailed");
-          if (detailEl)
-            detailEl.textContent = data.message || "";
-          if (actionsEl)
-            actionsEl.innerHTML = `
-        <button class="dep-btn primary" data-ffmpeg-action="${data.retryAction || "install"}">${i18next.t("deps.retry")}</button>
-      `;
-          break;
-        case "busy": {
-          statusEl.classList.add("busy");
-          statusEl.textContent = data.statusText || i18next.t("deps.installing");
-          const pct = Math.round(data.percent || 0);
-          if (detailEl)
-            detailEl.textContent = i18next.t("deps.progressText", { percent: pct });
-          progressWrap == null ? void 0 : progressWrap.classList.remove("hidden");
-          if (progressFill)
-            progressFill.style.width = `${pct}%`;
-          if (actionsEl)
-            actionsEl.innerHTML = "";
-          break;
-        }
-        case "done":
-          statusEl.classList.add("ok");
-          statusEl.textContent = data.statusText || i18next.t("deps.doneInstalled");
-          if (detailEl) {
-            detailEl.textContent = data.version ? i18next.t("deps.versionInstalled", { version: data.version }) : "";
-          }
-          if (actionsEl)
-            actionsEl.innerHTML = `
-        <button class="dep-btn" data-ffmpeg-action="reinstall">${i18next.t("deps.reinstall")}</button>
-        <button class="dep-btn danger" data-ffmpeg-action="uninstall">${i18next.t("deps.uninstall")}</button>
-      `;
           break;
       }
     }
@@ -4233,8 +4092,9 @@ var require_en = __commonJS({
         ytdlpDesc: "Video extraction & download engine",
         ffmpegDesc: "Video merging & transcoding engine",
         ffmpegManaged: "Managed by Eagle, no action needed",
-        ffmpegNotFoundHint: "Eagle built-in not found. Click below to install independently",
-        ffmpegUnsupported: "Auto-install not supported on this platform. Please update Eagle to get ffmpeg",
+        ffmpegNotFoundHint: "Eagle built-in FFmpeg plugin not found. Please click the button below to install it.",
+        ffmpegUnsupported: "Eagle official FFmpeg plugin is required for audio/video merging",
+        installFfmpegDep: "Install FFmpeg Dependency",
         checking: "\u25CC Checking...",
         installed: "\u2713 Installed",
         checkingUpdate: "Checking for updates...",
@@ -4346,8 +4206,9 @@ var require_zh_CN = __commonJS({
         ytdlpDesc: "\u89C6\u9891\u89E3\u6790\u4E0E\u4E0B\u8F7D\u5F15\u64CE",
         ffmpegDesc: "\u89C6\u9891\u5408\u5E76\u4E0E\u8F6C\u7801\u5F15\u64CE",
         ffmpegManaged: "\u7531 Eagle \u7BA1\u7406\uFF0C\u65E0\u9700\u624B\u52A8\u64CD\u4F5C",
-        ffmpegNotFoundHint: "\u672A\u627E\u5230 Eagle \u5185\u7F6E\u7248\u672C\uFF0C\u53EF\u70B9\u51FB\u4E0B\u65B9\u6309\u94AE\u72EC\u7ACB\u5B89\u88C5",
-        ffmpegUnsupported: "\u5F53\u524D\u5E73\u53F0\u6682\u4E0D\u652F\u6301\u81EA\u52A8\u5B89\u88C5\uFF0C\u8BF7\u66F4\u65B0 Eagle \u81F3\u6700\u65B0\u7248\u4EE5\u83B7\u53D6 ffmpeg",
+        ffmpegNotFoundHint: "\u672A\u68C0\u6D4B\u5230 Eagle \u5185\u7F6E FFmpeg \u63D2\u4EF6\uFF0C\u8BF7\u70B9\u51FB\u4E0B\u65B9\u6309\u94AE\u5B89\u88C5",
+        ffmpegUnsupported: "\u9700\u5B89\u88C5 Eagle \u5B98\u65B9 FFmpeg \u63D2\u4EF6\u4EE5\u652F\u6301\u97F3\u89C6\u9891\u5408\u5E76",
+        installFfmpegDep: "\u5B89\u88C5 FFmpeg \u4F9D\u8D56",
         checking: "\u25CC \u68C0\u67E5\u4E2D...",
         installed: "\u2713 \u5DF2\u5B89\u88C5",
         checkingUpdate: "\u68C0\u67E5\u66F4\u65B0\u4E2D...",
@@ -4386,10 +4247,7 @@ var {
   getInstalledYtDlpVersion,
   getLatestYtDlpVersion,
   getFfmpegSource,
-  getFfmpegVersion,
-  canInstallFfmpeg,
-  downloadFfmpeg,
-  uninstallFfmpeg
+  getFfmpegVersion
 } = require_binary();
 var downloader = require_downloader();
 var eagleApi = require_eagle();
@@ -4472,11 +4330,15 @@ function setupEventListeners() {
     if (btn)
       handleYtdlpAction(btn.dataset.ytdlpAction);
   });
-  document.getElementById("ffmpegActions").addEventListener("click", (e) => {
-    const btn = e.target.closest("[data-ffmpeg-action]");
-    if (btn)
-      handleFfmpegAction(btn.dataset.ffmpegAction);
-  });
+  const ffmpegActions = document.getElementById("ffmpegActions");
+  if (ffmpegActions) {
+    ffmpegActions.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-ffmpeg-action]");
+      if (btn && btn.dataset.ffmpegAction === "open-store") {
+        openEagleFfmpegStore();
+      }
+    });
+  }
   document.addEventListener("startDownload", (e) => {
     addToQueue(e.detail.url);
   });
@@ -4493,6 +4355,23 @@ function setupEventListeners() {
     if (action === "copy")
       copyUrl(id);
   });
+}
+async function openEagleFfmpegStore() {
+  if (typeof eagle !== "undefined" && eagle.extraModule && eagle.extraModule.ffmpeg && typeof eagle.extraModule.ffmpeg.install === "function") {
+    try {
+      await eagle.extraModule.ffmpeg.install();
+      return;
+    } catch (e) {
+    }
+  }
+  const isZh = eagle.app.locale && eagle.app.locale.startsWith("zh");
+  const url = isZh ? "https://community-cn.eagle.cool/plugin/detail/eagle-plugin-ffmpeg" : "https://community.eagle.cool/plugin/detail/eagle-plugin-ffmpeg";
+  try {
+    const { shell } = require("electron");
+    shell.openExternal(url);
+  } catch (e) {
+    window.open(url, "_blank");
+  }
 }
 async function initializeBinaries() {
   if (depsReady()) {
@@ -4650,10 +4529,8 @@ function loadDepsInfo(options = {}) {
   const ytdlpInstalled = isYtDlpInstalled();
   if (ffmpegSource === "eagle") {
     ui.updateFfmpegCard("eagle", {});
-  } else if (ffmpegSource === "own") {
-    ui.updateFfmpegCard("installed", {});
   } else {
-    ui.updateFfmpegCard("missing", { canInstall: canInstallFfmpeg() });
+    ui.updateFfmpegCard("missing", {});
   }
   if (!ytdlpInstalled) {
     ui.updateYtdlpCard("missing");
@@ -4666,10 +4543,7 @@ function loadDepsInfo(options = {}) {
   }
   if (ffmpegSource) {
     getFfmpegVersion().then((ffmpegVersion) => {
-      if (ffmpegSource === "eagle")
-        ui.updateFfmpegCard("eagle", { version: ffmpegVersion });
-      else if (ffmpegSource === "own")
-        ui.updateFfmpegCard("installed", { version: ffmpegVersion });
+      ui.updateFfmpegCard("eagle", { version: ffmpegVersion });
     }).catch(() => {
     });
   }
@@ -4695,31 +4569,6 @@ function loadYtdlpUpdateStatus() {
     });
   }).catch(() => {
   });
-}
-async function handleFfmpegAction(action) {
-  if (action === "uninstall") {
-    uninstallFfmpeg();
-    ui.updateFfmpegCard("missing", { canInstall: canInstallFfmpeg() });
-    refreshDepsGatingState();
-    return;
-  }
-  const statusKey = action === "reinstall" ? "deps.reinstalling" : "deps.installing";
-  const doneKey = action === "reinstall" ? "deps.doneReinstalled" : "deps.doneInstalled";
-  const statusText = i18next2.t(statusKey);
-  ui.updateFfmpegCard("busy", { statusText, percent: 0 });
-  try {
-    await downloadFfmpeg((progress) => {
-      ui.updateFfmpegCard("busy", { statusText, percent: progress });
-    });
-    const version = await getFfmpegVersion();
-    ui.updateFfmpegCard("done", { statusText: i18next2.t(doneKey), version });
-    setTimeout(() => {
-      loadDepsInfo();
-      refreshDepsGatingState();
-    }, 1500);
-  } catch (e) {
-    ui.updateFfmpegCard("error", { message: e.message, retryAction: action });
-  }
 }
 async function handleYtdlpAction(action) {
   if (action === "uninstall") {
@@ -4780,3 +4629,4 @@ async function copyUrl(id) {
     console.error("Failed to copy URL:", error);
   }
 }
+module.exports = {};

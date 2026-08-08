@@ -1,28 +1,25 @@
 {
   "name": "eagle-video-downloader",
   "version": "2.4.0",
-  "description": "Eagle plugin for downloading videos from 1000+ websites using yt-dlp",
+  "description": "Download video links supported by yt-dlp and import them into Eagle",
   "main": "js/plugin.js",
   "scripts": {
     "build": "node esbuild.config.js",
     "dev": "node esbuild.config.js --watch",
-    "prepublish": "npm run build && rm -rf Plugin/bin/",
-    "package": "npm run build && rm -rf Plugin/bin/ && cd Plugin && zip -r ../视频下载器.eagleplugin ."
-  },
-  "dependencies": {
-    "i18next": "^25.8.19"
-  },
-  "devDependencies": {
-    "esbuild": "^0.19.0"
+    "package": "npm run build && rimraf bin/ && node -e \"const zip = new (require('adm-zip'))(); zip.addLocalFolder('Plugin'); zip.writeZip('视频下载器.eagleplugin');\""
   },
   "keywords": [
     "eagle",
-    "video",
-    "downloader",
-    "yt-dlp",
-    "youtube",
-    "twitter"
+    "plugin",
+    "video-downloader",
+    "yt-dlp"
   ],
-  "author": "Olivier Estévez",
-  "license": "MIT"
+  "author": "fansanqiu",
+  "license": "MIT",
+  "devDependencies": {
+    "esbuild": "^0.20.0"
+  },
+  "dependencies": {
+    "i18next": "^23.8.2"
+  }
 }

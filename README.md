@@ -12,7 +12,7 @@ YouTube、Twitter / X、TikTok、Bilibili、Instagram、Vimeo 以及[更多平�
 
 ## 功能特性
 
-支持 1000+ 视频网站，首次运行自动下载 yt-dlp，使用 Eagle 内置 ffmpeg 合并音视频，下载完成后自动导入到 Eagle 并保存元数据，支持中英文界面，显示实时下载进度。
+支持 1000+ 视频网站，首次运行需要在依赖管理页点击安装 yt-dlp，使用 Eagle 官方 FFmpeg 插件合并音视频，下载完成后自动导入到 Eagle 并保存元数据，支持中英文界面，显示实时下载进度。
 
 ## 安装方式
 
@@ -22,7 +22,7 @@ YouTube、Twitter / X、TikTok、Bilibili、Instagram、Vimeo 以及[更多平�
 
 ## 首次运行
 
-首次启动时插件会自动下载 yt-dlp（约 30MB）。ffmpeg 直接使用 Eagle 内置版本，无需额外下载。
+首次启动时需要在依赖管理页安装 yt-dlp（约 30MB）。ffmpeg 使用 Eagle 官方 FFmpeg 插件；若本地未安装，可在依赖页点击按钮一键跳转至 Eagle 应用商店下载。
 
 ## 使用方法
 
@@ -39,7 +39,7 @@ npm run build    # 构建插件
 npm run dev      # 开发模式（监听文件变化）
 ```
 
-项目使用 esbuild 打包，i18next 国际化，yt-dlp 负责视频提取，ffmpeg 由 Eagle 内置提供。
+项目使用 esbuild 打包，i18next 国际化，yt-dlp 负责视频提取，ffmpeg 由 Eagle 官方 FFmpeg 插件提供。
 
 ## 系统要求
 

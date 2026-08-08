@@ -6,13 +6,12 @@
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
-const dns = require("dns");
-const net = require("net");
 const https = require("https");
 const { spawn } = require("child_process");
 const i18next = require("i18next");
 
 const { getYtDlpPath, getFfmpegPath, BIN_DIR, downloadYtDlp } = require("./binary");
+const { isPrivateIp, validateUrl } = require("./net-guard");
 
 // Cookie 显式授权状态
 let cookieConsentGranted = false;
@@ -23,67 +22,6 @@ function setCookieConsent(granted) {
 
 function hasCookieConsent() {
   return cookieConsentGranted;
-}
-
-/**
- * 检查 IP 地址是否为私有/保留/回环地址
- */
-function isPrivateIp(ip) {
-  if (net.isIPv4(ip)) {
-    const parts = ip.split('.').map(Number);
-    if (parts[0] === 10) return true;                                       // 10.0.0.0/8
-    if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;   // 172.16.0.0/12
-    if (parts[0] === 192 && parts[1] === 168) return true;                  // 192.168.0.0/16
-    if (parts[0] === 127) return true;                                       // 127.0.0.0/8
-    if (parts[0] === 169 && parts[1] === 254) return true;                  // 169.254.0.0/16
-    if (parts[0] === 0) return true;                                         // 0.0.0.0/8
-  }
-  if (net.isIPv6(ip)) {
-    const normalized = ip.toLowerCase();
-    if (normalized === '::1' || normalized === '::') return true;
-    if (normalized.startsWith('fe80:')) return true;                         // link-local
-    if (normalized.startsWith('fc') || normalized.startsWith('fd')) return true; // unique local
-  }
-  return false;
-}
-
-/**
- * 安全 URL 验证：仅允许 HTTPS，阻断 localhost 及内网/私有 IP 地址
- */
-async function validateUrl(url) {
-  if (typeof url !== 'string' || !url.trim()) {
-    throw new Error('Invalid URL');
-  }
-
-  const parsed = new URL(url);
-
-  if (parsed.protocol !== 'https:') {
-    throw new Error('Only HTTPS URLs are allowed');
-  }
-
-  const hostname = parsed.hostname.toLowerCase();
-  if (hostname === 'localhost' || hostname === '[::1]') {
-    throw new Error('Access to localhost is blocked');
-  }
-
-  if (net.isIP(hostname)) {
-    if (isPrivateIp(hostname)) {
-      throw new Error(`Access to private IP address ${hostname} is blocked`);
-    }
-  } else {
-    try {
-      const addresses = await dns.promises.resolve(hostname);
-      for (const addr of addresses) {
-        if (isPrivateIp(addr)) {
-          throw new Error(`Hostname ${hostname} resolves to private IP ${addr}`);
-        }
-      }
-    } catch (e) {
-      if (e.message && e.message.includes('blocked')) throw e;
-    }
-  }
-
-  return parsed;
 }
 
 /**
@@ -336,26 +274,10 @@ function fetchWithRedirect(url, maxRedirects = 5) {
 }
 
 /**
- * 抓取网页 HTML 内容
+ * 抓取网页 HTML 内容（统一使用安全重定向处理）
  */
 async function fetchPageHtml(url) {
   await validateUrl(url);
-  try {
-    if (typeof fetch === "function") {
-      const res = await fetch(url, {
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        },
-        redirect: "follow",
-      });
-      if (res.status >= 200 && res.status < 400) {
-        const text = await res.text();
-        if (text && text.length > 0) return text;
-      }
-    }
-  } catch (e) {}
-
   return await fetchWithRedirect(url);
 }
 
@@ -491,8 +413,16 @@ async function downloadFile(url, outputPath, onProgress) {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         },
-        redirect: 'follow',
+        redirect: 'manual',
       });
+      if (res.status >= 300 && res.status < 400) {
+        const loc = res.headers.get('location');
+        if (loc) {
+          await validateUrl(loc);
+          return downloadFile(loc, outputPath, onProgress);
+        }
+        throw new Error(`Redirect missing location header (HTTP ${res.status})`);
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const contentLength = parseInt(res.headers.get('content-length') || '0', 10);
@@ -515,7 +445,11 @@ async function downloadFile(url, outputPath, onProgress) {
       if (onProgress) onProgress({ percent: 100 });
       return outputPath;
     }
-  } catch (e) {}
+  } catch (e) {
+    if (e.message && (e.message.includes('HTTP') || e.message.includes('Redirect') || e.message.includes('blocked') || e.message.includes('DNS'))) {
+      throw e;
+    }
+  }
 
   return new Promise((resolve, reject) => {
     const req = https.get(url, {
@@ -652,7 +586,7 @@ async function getVideoInfo(url) {
       if (hasVideoSource && !hasVideoContent) {
         const targetUrl = pinData.sourceUrl.replace(/\?img_index=\d+/, "");
         await validateUrl(targetUrl);
-        const args = ["--dump-json", "--no-warnings", ...getSiteArgs(targetUrl), targetUrl];
+        const args = ["--dump-json", "--no-warnings", "--force-ipv4", ...getSiteArgs(targetUrl), targetUrl];
         try {
           const output = await execYtDlp(args);
           return parseYtDlpOutput(output, targetUrl);
@@ -677,7 +611,7 @@ async function getVideoInfo(url) {
     }
   }
 
-  const args = ["--dump-json", "--no-warnings", ...getSiteArgs(url), url];
+  const args = ["--dump-json", "--no-warnings", "--force-ipv4", ...getSiteArgs(url), url];
 
   let output;
   try {
@@ -822,6 +756,7 @@ async function downloadVideo(url, onProgress, onStatus, preloadedInfo = null) {
     "--merge-output-format",
     "mp4",
     "--no-warnings",
+    "--force-ipv4",
     ...getSiteArgs(targetUrl),
   ];
 

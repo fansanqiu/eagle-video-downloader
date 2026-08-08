@@ -12,6 +12,9 @@
     "twitter",
     "yt-dlp"
   ],
+  "dependencies": [
+    "ffmpeg"
+  ],
   "fallbackLanguage": "en",
   "languages": [
     "en",

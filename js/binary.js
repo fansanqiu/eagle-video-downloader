@@ -1,6 +1,6 @@
 /**
  * 二进制文件管理模块
- * 处理 yt-dlp 与 ffmpeg 的锁定版本下载、签名/哈希校验及配置
+ * 处理 yt-dlp 锁定版本下载与 SHA-256 哈希校验
  */
 
 const path = require('path');
@@ -9,6 +9,7 @@ const os = require('os');
 const https = require('https');
 const crypto = require('crypto');
 const { spawn, execFileSync } = require('child_process');
+const { validateUrl } = require('./net-guard');
 
 // 插件路径（__dirname 运行时指向 dist/，向上一级即 Plugin/ 根目录）
 const PLUGIN_ROOT = path.join(__dirname, '..');
@@ -27,50 +28,23 @@ const PINNED_VERSIONS = {
         },
         urlTemplate: 'https://github.com/yt-dlp/yt-dlp/releases/download/{version}/{binary}',
     },
-    ffmpeg: {
-        darwin_arm64: {
-            url: 'https://github.com/eagle-app/eagle-plugin-ffmpeg/raw/main/eagle-ffmpeg-mac-arm64.zip',
-            sha256: null,
-        },
-        darwin_x64: {
-            url: 'https://github.com/eagle-app/eagle-plugin-ffmpeg/raw/main/eagle-ffmpeg-mac-x64.zip',
-            sha256: null,
-        },
-        win32_x64: {
-            url: 'https://github.com/BtbN/ffmpeg-builds/releases/download/autobuild-2026-07-04-14-18/ffmpeg-N-116244-g7b8d0c2e3a-win64-gpl.zip',
-            sha256: null,
-        },
-    },
 };
 
 /**
  * 校验文件 SHA-256 摘要
+ * 无有效校验值时必须删除文件并停止
  */
 function verifySha256(filePath, expectedHash) {
-    if (!expectedHash || expectedHash.startsWith('<')) return;
+    if (!expectedHash || typeof expectedHash !== 'string' || expectedHash.length !== 64 || expectedHash.startsWith('<')) {
+        try { fs.unlinkSync(filePath); } catch (e) {}
+        throw new Error(`SHA-256 verification failed for ${path.basename(filePath)}: hash missing or invalid`);
+    }
     const fileBuffer = fs.readFileSync(filePath);
     const hash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
     if (hash.toLowerCase() !== expectedHash.toLowerCase()) {
         try { fs.unlinkSync(filePath); } catch (e) {}
         throw new Error(`SHA-256 verification failed for ${path.basename(filePath)}: expected ${expectedHash}, got ${hash}`);
     }
-}
-
-function httpsGetJson(options, timeoutMs = 8000) {
-    return new Promise((resolve, reject) => {
-        const req = https.get(options, (response) => {
-            let data = '';
-            response.on('data', (chunk) => { data += chunk; });
-            response.on('end', () => {
-                try { resolve(JSON.parse(data)); } catch (e) { reject(e); }
-            });
-            response.on('error', reject);
-        });
-        req.setTimeout(timeoutMs, () => {
-            req.destroy(new Error('Request timed out'));
-        });
-        req.on('error', reject);
-    });
 }
 
 function getFfmpegBinaryName() {
@@ -146,18 +120,9 @@ function getEagleFfmpegPath() {
     return path.join(getEagleDataDir(), 'Plugins', getEagleFfmpegDirName(), getFfmpegBinaryName());
 }
 
-/**
- * 获取插件自行管理的 ffmpeg 路径（存放在 bin/ 目录下）
- */
-function getOwnFfmpegPath() {
-    return path.join(BIN_DIR, getFfmpegBinaryName());
-}
-
 function resolveFfmpeg() {
     const eagle = getEagleFfmpegPath();
     if (fs.existsSync(eagle)) return { source: 'eagle', path: eagle };
-    const own = getOwnFfmpegPath();
-    if (fs.existsSync(own)) return { source: 'own', path: own };
     return null;
 }
 
@@ -166,14 +131,6 @@ function resolveFfmpeg() {
  */
 function getFfmpegSource() {
     return resolveFfmpeg()?.source ?? null;
-}
-
-/**
- * 当前平台是否支持自动安装 ffmpeg
- */
-function canInstallFfmpeg() {
-    const p = os.platform();
-    return p === 'darwin' || p === 'win32';
 }
 
 /**
@@ -223,11 +180,12 @@ function downloadFile(url, destPath, onProgress, retriesLeft = DOWNLOAD_MAX_RETR
                 settled = true;
                 cleanupFile();
                 const redirectUrl = response.headers.location;
-                if (!redirectUrl || !redirectUrl.startsWith('https://')) {
-                    reject(new Error(`Insecure redirect rejected: ${redirectUrl}`));
+                if (!redirectUrl) {
+                    reject(new Error('Redirect missing location header'));
                     return;
                 }
-                downloadFile(redirectUrl, destPath, onProgress, retriesLeft, idleTimeoutMs)
+                validateUrl(redirectUrl)
+                    .then(() => downloadFile(redirectUrl, destPath, onProgress, retriesLeft, idleTimeoutMs))
                     .then(resolve)
                     .catch(reject);
                 return;
@@ -376,129 +334,6 @@ async function checkAndUpdateYtDlp(onProgress) {
 }
 
 /**
- * 解压安全验证：拒绝路径穿越和符号链接
- */
-function validateExtractedFiles(dir, baseDir) {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-        const fullPath = path.join(dir, entry.name);
-        const resolved = path.resolve(fullPath);
-
-        if (!resolved.startsWith(path.resolve(baseDir))) {
-            throw new Error(`Path traversal detected: ${entry.name}`);
-        }
-        if (entry.isSymbolicLink()) {
-            throw new Error(`Symbolic link rejected: ${entry.name}`);
-        }
-        if (entry.isDirectory()) {
-            validateExtractedFiles(fullPath, baseDir);
-        }
-    }
-}
-
-/**
- * 下载并安装锁定版本的 ffmpeg
- * @param {Function} onProgress 进度回调
- */
-async function downloadFfmpeg(onProgress) {
-    const platform = os.platform();
-    const arch = os.arch();
-
-    let downloadUrl, zipName, expectedSha256;
-
-    if (platform === 'darwin') {
-        const key = arch === 'arm64' ? 'darwin_arm64' : 'darwin_x64';
-        const info = PINNED_VERSIONS.ffmpeg[key];
-        zipName = arch === 'arm64' ? 'eagle-ffmpeg-mac-arm64.zip' : 'eagle-ffmpeg-mac-x64.zip';
-        downloadUrl = info.url;
-        expectedSha256 = info.sha256;
-    } else if (platform === 'win32') {
-        const info = PINNED_VERSIONS.ffmpeg.win32_x64;
-        zipName = 'ffmpeg-win-x64.zip';
-        downloadUrl = info.url;
-        expectedSha256 = info.sha256;
-    } else {
-        throw new Error(`Unsupported platform for ffmpeg auto-install: ${platform}`);
-    }
-
-    if (!fs.existsSync(BIN_DIR)) {
-        fs.mkdirSync(BIN_DIR, { recursive: true });
-    }
-
-    const zipPath = path.join(BIN_DIR, zipName);
-    await downloadFile(downloadUrl, zipPath, onProgress);
-    verifySha256(zipPath, expectedSha256);
-
-    const tmpDir = path.join(BIN_DIR, '_ffmpeg_tmp');
-    if (fs.existsSync(tmpDir)) fs.rmSync(tmpDir, { recursive: true });
-    fs.mkdirSync(tmpDir);
-
-    try {
-        if (platform === 'darwin') {
-            execFileSync('unzip', ['-o', zipPath, '-d', tmpDir], { stdio: 'ignore' });
-        } else {
-            try {
-                execFileSync('tar', ['-xf', zipPath, '-C', tmpDir], { stdio: 'ignore' });
-            } catch (e) {
-                execFileSync('powershell', [
-                    '-NoProfile', '-Command',
-                    `Expand-Archive -LiteralPath "${zipPath}" -DestinationPath "${tmpDir}" -Force`,
-                ], { stdio: 'ignore' });
-            }
-        }
-    } finally {
-        if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath);
-    }
-
-    // 验证解压内容安全性
-    validateExtractedFiles(tmpDir, tmpDir);
-
-    // 递归查找二进制
-    function findBinary(dir, name) {
-        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-            const fullPath = path.join(dir, entry.name);
-            if (entry.isSymbolicLink()) continue;
-            if (entry.isFile() && entry.name === name) return fullPath;
-            if (entry.isDirectory()) {
-                const found = findBinary(fullPath, name);
-                if (found) return found;
-            }
-        }
-        return null;
-    }
-
-    const binaryName = getFfmpegBinaryName();
-    const foundBin = findBinary(tmpDir, binaryName);
-    if (!foundBin) {
-        fs.rmSync(tmpDir, { recursive: true });
-        throw new Error('ffmpeg binary not found in downloaded package');
-    }
-
-    const destPath = getOwnFfmpegPath();
-    if (fs.existsSync(destPath)) fs.unlinkSync(destPath);
-    fs.renameSync(foundBin, destPath);
-    fs.rmSync(tmpDir, { recursive: true });
-
-    if (platform !== 'win32') {
-        fs.chmodSync(destPath, '755');
-    }
-    if (platform === 'darwin') {
-        clearQuarantine(destPath);
-    }
-
-    return destPath;
-}
-
-/**
- * 卸载插件自管理的 ffmpeg
- */
-function uninstallFfmpeg() {
-    const ffmpegPath = getOwnFfmpegPath();
-    if (fs.existsSync(ffmpegPath)) {
-        fs.unlinkSync(ffmpegPath);
-    }
-}
-
-/**
  * 获取 Eagle 内置 ffmpeg 的版本号
  */
 function getFfmpegVersion() {
@@ -557,14 +392,12 @@ module.exports = {
     getFfmpegPath,
     getFfmpegVersion,
     getFfmpegSource,
-    canInstallFfmpeg,
     isYtDlpInstalled,
     downloadYtDlp,
     uninstallYtDlp,
-    downloadFfmpeg,
-    uninstallFfmpeg,
     checkAndUpdateYtDlp,
     getInstalledYtDlpVersion,
     getLatestYtDlpVersion,
     getYtDlpUpdateInfo,
+    verifySha256,
 };

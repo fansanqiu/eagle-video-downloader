@@ -13,9 +13,6 @@ const {
   getLatestYtDlpVersion,
   getFfmpegSource,
   getFfmpegVersion,
-  canInstallFfmpeg,
-  downloadFfmpeg,
-  uninstallFfmpeg,
 } = require("./binary");
 const downloader = require("./downloader");
 const eagleApi = require("./eagle");
@@ -151,11 +148,16 @@ function setupEventListeners() {
     if (btn) handleYtdlpAction(btn.dataset.ytdlpAction);
   });
 
-  // ffmpeg 操作按钮事件委托
-  document.getElementById("ffmpegActions").addEventListener("click", (e) => {
-    const btn = e.target.closest("[data-ffmpeg-action]");
-    if (btn) handleFfmpegAction(btn.dataset.ffmpegAction);
-  });
+  // ffmpeg 操作按钮事件委托（触发 Eagle 官方 FFmpeg 依赖安装弹窗或跳转商店）
+  const ffmpegActions = document.getElementById("ffmpegActions");
+  if (ffmpegActions) {
+    ffmpegActions.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-ffmpeg-action]");
+      if (btn && btn.dataset.ffmpegAction === "open-store") {
+        openEagleFfmpegStore();
+      }
+    });
+  }
 
   document.addEventListener("startDownload", (e) => {
     addToQueue(e.detail.url);
@@ -174,8 +176,30 @@ function setupEventListeners() {
 }
 
 /**
+ * 打开 Eagle 官方 FFmpeg 依赖安装弹窗或应用商店页面
+ */
+async function openEagleFfmpegStore() {
+  if (typeof eagle !== "undefined" && eagle.extraModule && eagle.extraModule.ffmpeg && typeof eagle.extraModule.ffmpeg.install === "function") {
+    try {
+      await eagle.extraModule.ffmpeg.install();
+      return;
+    } catch (e) {}
+  }
+  const isZh = eagle.app.locale && eagle.app.locale.startsWith("zh");
+  const url = isZh
+    ? "https://community-cn.eagle.cool/plugin/detail/eagle-plugin-ffmpeg"
+    : "https://community.eagle.cool/plugin/detail/eagle-plugin-ffmpeg";
+  try {
+    const { shell } = require("electron");
+    shell.openExternal(url);
+  } catch (e) {
+    window.open(url, "_blank");
+  }
+}
+
+/**
  * 初始化二进制文件
- * yt-dlp 和 ffmpeg 均为必需依赖，缺失时进入依赖管理页（门槛模式）强制安装
+ * yt-dlp 和 ffmpeg 均为必需依赖，缺失时进入依赖管理页（门槛模式）
  */
 async function initializeBinaries() {
   if (depsReady()) {
@@ -389,10 +413,8 @@ function loadDepsInfo(options = {}) {
 
   if (ffmpegSource === 'eagle') {
     ui.updateFfmpegCard('eagle', {});
-  } else if (ffmpegSource === 'own') {
-    ui.updateFfmpegCard('installed', {});
   } else {
-    ui.updateFfmpegCard('missing', { canInstall: canInstallFfmpeg() });
+    ui.updateFfmpegCard('missing', {});
   }
 
   if (!ytdlpInstalled) {
@@ -408,8 +430,7 @@ function loadDepsInfo(options = {}) {
 
   if (ffmpegSource) {
     getFfmpegVersion().then((ffmpegVersion) => {
-      if (ffmpegSource === 'eagle') ui.updateFfmpegCard('eagle', { version: ffmpegVersion });
-      else if (ffmpegSource === 'own') ui.updateFfmpegCard('installed', { version: ffmpegVersion });
+      ui.updateFfmpegCard('eagle', { version: ffmpegVersion });
     }).catch(() => {});
   }
 }
@@ -437,39 +458,6 @@ function loadYtdlpUpdateStatus() {
       ui.updateYtdlpCard("installed", { version: installedVersion });
     });
   }).catch(() => {});
-}
-
-/**
- * 执行 ffmpeg 操作：install / reinstall / uninstall
- */
-async function handleFfmpegAction(action) {
-  if (action === 'uninstall') {
-    uninstallFfmpeg();
-    ui.updateFfmpegCard('missing', { canInstall: canInstallFfmpeg() });
-    refreshDepsGatingState();
-    return;
-  }
-
-  const statusKey = action === 'reinstall' ? 'deps.reinstalling' : 'deps.installing';
-  const doneKey   = action === 'reinstall' ? 'deps.doneReinstalled' : 'deps.doneInstalled';
-  const statusText = i18next.t(statusKey);
-
-  ui.updateFfmpegCard('busy', { statusText, percent: 0 });
-
-  try {
-    await downloadFfmpeg((progress) => {
-      ui.updateFfmpegCard('busy', { statusText, percent: progress });
-    });
-
-    const version = await getFfmpegVersion();
-    ui.updateFfmpegCard('done', { statusText: i18next.t(doneKey), version });
-    setTimeout(() => {
-      loadDepsInfo();
-      refreshDepsGatingState();
-    }, 1500);
-  } catch (e) {
-    ui.updateFfmpegCard('error', { message: e.message, retryAction: action });
-  }
 }
 
 /**
@@ -548,3 +536,5 @@ async function copyUrl(id) {
     console.error("Failed to copy URL:", error);
   }
 }
+
+module.exports = {};

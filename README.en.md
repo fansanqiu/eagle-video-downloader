@@ -12,7 +12,7 @@ YouTube, Twitter / X, TikTok, Bilibili, Instagram, Vimeo, and [many more](https:
 
 ## Features
 
-Supports 1000+ video websites. Downloads yt-dlp automatically on first run. Uses Eagle's built-in ffmpeg for audio/video merging. Automatically imports downloaded videos to Eagle with metadata. Supports Chinese and English interfaces with real-time progress display.
+Supports 1000+ video websites. Install yt-dlp via the dependency manager on first launch. Uses Eagle's official FFmpeg plugin for audio/video merging. Automatically imports downloaded videos to Eagle with metadata. Supports Chinese and English interfaces with real-time progress display.
 
 ## Installation
 
@@ -22,7 +22,7 @@ Manual install: download the [latest release](https://github.com/fansanqiu/eagle
 
 ## First Run
 
-On first launch the plugin automatically downloads yt-dlp (~30MB). ffmpeg uses Eagle's built-in version — no additional download required.
+On first launch, install yt-dlp (~30MB) from the dependency management page. ffmpeg uses Eagle's official FFmpeg plugin — if missing, a button in the dependency manager allows one-click navigation to download it from the Eagle Store.
 
 ## Usage
 
@@ -39,7 +39,7 @@ npm run build    # Build plugin
 npm run dev      # Development mode (watch for changes)
 ```
 
-The project uses esbuild for bundling, i18next for internationalization, yt-dlp for video extraction, and Eagle's built-in ffmpeg.
+The project uses esbuild for bundling, i18next for internationalization, yt-dlp for video extraction, and Eagle's official FFmpeg plugin.
 
 ## System Requirements
 

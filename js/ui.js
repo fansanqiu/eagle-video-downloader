@@ -411,11 +411,11 @@ function updateYtdlpCard(state, data = {}) {
 
 /**
  * 更新 ffmpeg 卡片状态
- * state: 'checking' | 'eagle' | 'installed' | 'missing' | 'busy' | 'done'
- * data: { version, statusText, percent, canInstall }
+ * state: 'checking' | 'eagle' | 'missing'
+ * data: { version }
  */
 function updateFfmpegCard(state, data = {}) {
-  const { statusEl, detailEl, progressWrap, progressFill, actionsEl } = getDepCardEls('ffmpeg');
+  const { statusEl, detailEl, progressWrap, actionsEl } = getDepCardEls('ffmpeg');
 
   if (!statusEl) return;
 
@@ -442,71 +442,17 @@ function updateFfmpegCard(state, data = {}) {
       if (actionsEl) actionsEl.innerHTML = "";
       break;
 
-    // 插件自管理版本：提供重装和卸载
-    case "installed":
-      statusEl.classList.add("ok");
-      statusEl.textContent = i18next.t("deps.latest");
-      if (detailEl) {
-        detailEl.textContent = data.version
-          ? i18next.t("deps.versionInstalled", { version: data.version })
-          : "";
-      }
-      if (actionsEl) actionsEl.innerHTML = `
-        <button class="dep-btn" data-ffmpeg-action="reinstall">${i18next.t("deps.reinstall")}</button>
-        <button class="dep-btn danger" data-ffmpeg-action="uninstall">${i18next.t("deps.uninstall")}</button>
-      `;
-      break;
-
-    // 未安装：根据平台决定是否显示安装按钮
+    // 未找到 Eagle 内置 ffmpeg：提供「安装 FFmpeg 依赖」按钮
     case "missing":
+    default:
       statusEl.classList.add("missing");
       statusEl.textContent = i18next.t("deps.notFound");
       if (detailEl) {
-        detailEl.textContent = data.canInstall
-          ? i18next.t("deps.ffmpegNotFoundHint")
-          : i18next.t("deps.ffmpegUnsupported");
+        detailEl.textContent = i18next.t("deps.ffmpegNotFoundHint");
       }
       if (actionsEl) {
-        actionsEl.innerHTML = data.canInstall ? `
-          <button class="dep-btn primary" data-ffmpeg-action="install">${i18next.t("deps.install")}</button>
-        ` : "";
+        actionsEl.innerHTML = `<button class="dep-btn primary" data-ffmpeg-action="open-store">${i18next.t("deps.installFfmpegDep")}</button>`;
       }
-      break;
-
-    case "error":
-      statusEl.classList.add("missing");
-      statusEl.textContent = i18next.t("deps.downloadFailed");
-      if (detailEl) detailEl.textContent = data.message || "";
-      if (actionsEl) actionsEl.innerHTML = `
-        <button class="dep-btn primary" data-ffmpeg-action="${data.retryAction || 'install'}">${i18next.t("deps.retry")}</button>
-      `;
-      break;
-
-    // 操作进行中：显示进度条
-    case "busy": {
-      statusEl.classList.add("busy");
-      statusEl.textContent = data.statusText || i18next.t("deps.installing");
-      const pct = Math.round(data.percent || 0);
-      if (detailEl) detailEl.textContent = i18next.t("deps.progressText", { percent: pct });
-      progressWrap?.classList.remove("hidden");
-      if (progressFill) progressFill.style.width = `${pct}%`;
-      if (actionsEl) actionsEl.innerHTML = "";
-      break;
-    }
-
-    // 操作完成：短暂展示后恢复真实状态
-    case "done":
-      statusEl.classList.add("ok");
-      statusEl.textContent = data.statusText || i18next.t("deps.doneInstalled");
-      if (detailEl) {
-        detailEl.textContent = data.version
-          ? i18next.t("deps.versionInstalled", { version: data.version })
-          : "";
-      }
-      if (actionsEl) actionsEl.innerHTML = `
-        <button class="dep-btn" data-ffmpeg-action="reinstall">${i18next.t("deps.reinstall")}</button>
-        <button class="dep-btn danger" data-ffmpeg-action="uninstall">${i18next.t("deps.uninstall")}</button>
-      `;
       break;
   }
 }

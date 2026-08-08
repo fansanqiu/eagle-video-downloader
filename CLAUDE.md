@@ -32,7 +32,8 @@ npm run package   # 打包为 视频下载器.eagleplugin（构建 + 清理 bin/
 - `plugin.js` — 入口，处理 Eagle 生命周期钩子，管理下载队列（最多 3 个并发），协调各模块
 - `ui.js` — 队列项渲染与状态更新，输入栏事件，主题切换
 - `downloader.js` — 调用 yt-dlp 子进程，解析实时进度输出，处理多视频下载，Vimeo URL 规范化
-- `binary.js` — yt-dlp 与 ffmpeg 锁定版本下载与 SHA-256 摘要校验，macOS 隔离属性清除，Eagle 内置 ffmpeg 路径解析
+- `binary.js` — yt-dlp 锁定版本下载与 SHA-256 摘要校验，macOS 隔离属性清除，Eagle 内置 ffmpeg 路径解析
+- `net-guard.js` — 共享网络安全模块，IP/SSRF 地址检测与 URL 校验
 - `eagle.js` — 调用 `eagle.item.addFromPath()` 将视频导入 Eagle 库
 
 下载流程：用户输入 URL → `getVideoInfo()`（yt-dlp --dump-json）→ `downloadVideo()`（yt-dlp 子进程，临时目录）→ `importToEagle()` → 清理临时文件。
@@ -54,9 +55,4 @@ npm run package   # 打包为 视频下载器.eagleplugin（构建 + 清理 bin/
    - 下载该 release 附带的 `SHA2-256SUMS` 文件
    - 更新各平台二进制（`yt-dlp.exe`、`yt-dlp_macos`、`yt-dlp_linux`）的 `sha256` 摘要值
 
-2. **ffmpeg**：
-   - macOS：检查 `https://github.com/eagle-app/eagle-plugin-ffmpeg` 的文件更新
-   - Windows：检查 `https://github.com/BtbN/ffmpeg-builds/releases` 的构建版本
-   - 若有更新：下载压缩包，计算 SHA-256 哈希，更新 `PINNED_VERSIONS.ffmpeg` 对应条目的 `sha256`
-
-3. 重新运行 `npm run build` 打包 `Plugin/dist/plugin.js` 并随仓库提交。
+2. 重新运行 `npm run build` 打包 `Plugin/dist/plugin.js` 并随仓库提交。
