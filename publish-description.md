@@ -76,7 +76,7 @@ v2.4.0
 - 移除所有 TLS 证书校验跳过逻辑，强制遵循 HTTPS 安全传输
 - 新增 Cookie 显式 Opt-in 授权机制，默认禁用浏览器 Cookie 读取
 - 加强 URL 与网络边界校验：只允许 HTTPS、阻断 localhost、私有及保留 IPv4/IPv6 地址，DNS 失败直接拒绝
-- yt-dlp 网络访问增加 IPv4 强约束缓解 SSRF 风险
+- yt-dlp 仅接受用户主动输入的 HTTPS 链接，并对插件自身的网络请求强制校验目标地址，阻断本机与私有网络
 
 v2.3.0
 - 新增依赖管理页面：查看 yt-dlp 与 ffmpeg 状态，支持一键安装、更新、重装、卸载
@@ -94,7 +94,7 @@ v2.4.0
 - Removed all TLS certificate verification bypass logic, enforcing secure HTTPS connections
 - Added explicit consent flow for browser cookie access, disabled by default
 - Enforced strict URL and network boundary validation: HTTPS-only, blocking localhost, private & reserved IPv4/IPv6 addresses, rejecting on DNS failure
-- Added IPv4 restriction for yt-dlp network requests to mitigate SSRF risks
+- yt-dlp only accepts user-provided HTTPS links, and all plugin-initiated network requests validate the target address, blocking loopback and private networks
 
 v2.3.0
 - Added dependency management page: view yt-dlp and ffmpeg status with one-click install, update, reinstall, and uninstall

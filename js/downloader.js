@@ -6,12 +6,11 @@
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
-const https = require("https");
 const { spawn } = require("child_process");
 const i18next = require("i18next");
 
 const { getYtDlpPath, getFfmpegPath, BIN_DIR, downloadYtDlp } = require("./binary");
-const { isPrivateIp, validateUrl } = require("./net-guard");
+const { isPrivateIp, validateUrl, secureHttpsGet } = require("./net-guard");
 
 // Cookie 显式授权状态
 let cookieConsentGranted = false;
@@ -234,9 +233,8 @@ function fetchWithRedirect(url, maxRedirects = 5) {
   return new Promise(async (resolve) => {
     if (maxRedirects <= 0) return resolve(null);
     try {
-      await validateUrl(url);
       const u = new URL(url);
-      const req = https.get(
+      const req = await secureHttpsGet(
         url,
         {
           headers: {
@@ -399,97 +397,62 @@ async function extractPinterestPinData(pinterestUrl) {
 }
 
 /**
- * 通用 HTTPS 文件下载器
+ * 通用 HTTPS 文件下载器（连接 pin 到已校验 IP，逐跳重定向重新校验）
  */
-async function downloadFile(url, outputPath, onProgress) {
-  await validateUrl(url);
-
+async function downloadFile(url, outputPath, onProgress, maxRedirects = 5) {
   const dir = path.dirname(outputPath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
-  try {
-    if (typeof fetch === 'function') {
-      const res = await fetch(url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        },
-        redirect: 'manual',
-      });
-      if (res.status >= 300 && res.status < 400) {
-        const loc = res.headers.get('location');
-        if (loc) {
-          await validateUrl(loc);
-          return downloadFile(loc, outputPath, onProgress);
-        }
-        throw new Error(`Redirect missing location header (HTTP ${res.status})`);
-      }
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-      const contentLength = parseInt(res.headers.get('content-length') || '0', 10);
-      const reader = res.body.getReader();
-      const chunks = [];
-      let received = 0;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value);
-        received += value.length;
-        if (onProgress && contentLength > 0) {
-          onProgress({ percent: Math.round((received / contentLength) * 100) });
-        }
-      }
-
-      const buffer = Buffer.concat(chunks);
-      fs.writeFileSync(outputPath, buffer);
-      if (onProgress) onProgress({ percent: 100 });
-      return outputPath;
-    }
-  } catch (e) {
-    if (e.message && (e.message.includes('HTTP') || e.message.includes('Redirect') || e.message.includes('blocked') || e.message.includes('DNS'))) {
-      throw e;
-    }
-  }
-
   return new Promise((resolve, reject) => {
-    const req = https.get(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      },
-    }, (res) => {
-      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        let redirectUrl = res.headers.location;
-        validateUrl(redirectUrl)
-          .then(() => downloadFile(redirectUrl, outputPath, onProgress))
-          .then(resolve)
-          .catch(reject);
-        return;
+    (async () => {
+      let req;
+      try {
+        req = await secureHttpsGet(url, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          },
+        }, (res) => {
+          if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+            if (maxRedirects <= 0) return reject(new Error('Too many redirects'));
+            let redirectUrl = res.headers.location;
+            if (redirectUrl.startsWith('/')) {
+              const u = new URL(url);
+              redirectUrl = `${u.protocol}//${u.host}${redirectUrl}`;
+            }
+            res.resume();
+            // 递归下载会对新目标重新 validateUrl + pin IP
+            downloadFile(redirectUrl, outputPath, onProgress, maxRedirects - 1).then(resolve).catch(reject);
+            return;
+          }
+          if (res.statusCode < 200 || res.statusCode >= 400) {
+            return reject(new Error(`HTTP ${res.statusCode}`));
+          }
+
+          const contentLength = parseInt(res.headers['content-length'] || '0', 10);
+          const fileStream = fs.createWriteStream(outputPath);
+          let received = 0;
+
+          res.on('data', (chunk) => {
+            received += chunk.length;
+            if (onProgress && contentLength > 0) {
+              onProgress({ percent: Math.round((received / contentLength) * 100) });
+            }
+          });
+
+          res.pipe(fileStream);
+          fileStream.on('finish', () => {
+            fileStream.close();
+            if (onProgress) onProgress({ percent: 100 });
+            resolve(outputPath);
+          });
+          fileStream.on('error', reject);
+        });
+      } catch (e) {
+        return reject(e);
       }
-      if (res.statusCode < 200 || res.statusCode >= 400) {
-        return reject(new Error(`HTTP ${res.statusCode}`));
-      }
-
-      const contentLength = parseInt(res.headers['content-length'] || '0', 10);
-      const fileStream = fs.createWriteStream(outputPath);
-      let received = 0;
-
-      res.on('data', (chunk) => {
-        received += chunk.length;
-        if (onProgress && contentLength > 0) {
-          onProgress({ percent: Math.round((received / contentLength) * 100) });
-        }
-      });
-
-      res.pipe(fileStream);
-      fileStream.on('finish', () => {
-        fileStream.close();
-        if (onProgress) onProgress({ percent: 100 });
-        resolve(outputPath);
-      });
-      fileStream.on('error', reject);
-    });
-    req.on('error', reject);
-    req.setTimeout(30000, () => { req.destroy(); reject(new Error('Download timeout')); });
+      req.on('error', reject);
+      req.setTimeout(30000, () => { req.destroy(); reject(new Error('Download timeout')); });
+    })();
   });
 }
 
