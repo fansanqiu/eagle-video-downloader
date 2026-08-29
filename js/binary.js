@@ -6,10 +6,9 @@
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const https = require('https');
 const crypto = require('crypto');
 const { spawn, execFileSync } = require('child_process');
-const { validateUrl } = require('./net-guard');
+const { secureHttpsGet } = require('./net-guard');
 
 // 插件路径（__dirname 运行时指向 dist/，向上一级即 Plugin/ 根目录）
 const PLUGIN_ROOT = path.join(__dirname, '..');
@@ -47,82 +46,42 @@ function verifySha256(filePath, expectedHash) {
     }
 }
 
-function getFfmpegBinaryName() {
-    return os.platform() === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
-}
-
-/**
- * 获取特定平台的 yt-dlp 二进制文件名
- */
 function getYtDlpBinaryName() {
     const platform = os.platform();
     switch (platform) {
-        case 'win32':
-            return 'yt-dlp.exe';
-        case 'darwin':
-            return 'yt-dlp_macos';
-        case 'linux':
-            return 'yt-dlp_linux';
-        default:
-            return 'yt-dlp';
+        case 'win32':   return 'yt-dlp.exe';
+        case 'darwin':  return 'yt-dlp_macos';
+        case 'linux':   return 'yt-dlp_linux';
+        default:        return 'yt-dlp';
     }
 }
 
-/**
- * 获取 yt-dlp 二进制文件路径
- */
 function getYtDlpPath() {
     return path.join(BIN_DIR, getYtDlpBinaryName());
 }
 
-/**
- * 检查 yt-dlp 是否已安装
- */
 function isYtDlpInstalled() {
     return fs.existsSync(getYtDlpPath());
 }
 
-/**
- * 获取 Eagle 数据目录（跨平台）
- */
-function getEagleDataDir() {
-    const platform = os.platform();
-    if (platform === 'darwin') {
-        return path.join(os.homedir(), 'Library', 'Application Support', 'Eagle');
-    } else if (platform === 'win32') {
-        return path.join(os.homedir(), 'AppData', 'Roaming', 'Eagle');
-    } else {
-        return path.join(os.homedir(), '.config', 'Eagle');
-    }
-}
-
-/**
- * 获取 Eagle 内置 ffmpeg 的目录名（跨平台）
- */
-function getEagleFfmpegDirName() {
-    const platform = os.platform();
-    const arch = os.arch();
-    const archName = arch === 'arm64' ? 'arm64' : 'x64';
-
-    if (platform === 'darwin') {
-        return `ffmpeg-mac-${archName}`;
-    } else if (platform === 'win32') {
-        return `ffmpeg-win-${archName}`;
-    } else {
-        return `ffmpeg-linux-${archName}`;
-    }
-}
-
-/**
- * 获取 Eagle 内置 ffmpeg 的完整路径
- */
 function getEagleFfmpegPath() {
-    return path.join(getEagleDataDir(), 'Plugins', getEagleFfmpegDirName(), getFfmpegBinaryName());
+    const platform = os.platform();
+    const archName = os.arch() === 'arm64' ? 'arm64' : 'x64';
+    const dataDir = platform === 'darwin'
+        ? path.join(os.homedir(), 'Library', 'Application Support', 'Eagle')
+        : platform === 'win32'
+            ? path.join(os.homedir(), 'AppData', 'Roaming', 'Eagle')
+            : path.join(os.homedir(), '.config', 'Eagle');
+    const dirName = platform === 'darwin' ? `ffmpeg-mac-${archName}`
+        : platform === 'win32' ? `ffmpeg-win-${archName}`
+        : `ffmpeg-linux-${archName}`;
+    const bin = platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
+    return path.join(dataDir, 'Plugins', dirName, bin);
 }
 
 function resolveFfmpeg() {
-    const eagle = getEagleFfmpegPath();
-    if (fs.existsSync(eagle)) return { source: 'eagle', path: eagle };
+    const p = getEagleFfmpegPath();
+    if (fs.existsSync(p)) return { source: 'eagle', path: p };
     return null;
 }
 
@@ -148,11 +107,12 @@ const DOWNLOAD_MAX_RETRIES = 2;
 /**
  * 下载文件并显示进度
  */
-function downloadFile(url, destPath, onProgress, retriesLeft = DOWNLOAD_MAX_RETRIES, idleTimeoutMs = DOWNLOAD_IDLE_TIMEOUT_MS) {
+function downloadFile(url, destPath, onProgress, retriesLeft = DOWNLOAD_MAX_RETRIES, idleTimeoutMs = DOWNLOAD_IDLE_TIMEOUT_MS, maxRedirects = 5) {
     return new Promise((resolve, reject) => {
         const tmpPath = `${destPath}.download`;
         const file = fs.createWriteStream(tmpPath);
         let settled = false;
+        let request = null;
 
         const cleanupFile = () => {
             file.close();
@@ -164,7 +124,7 @@ function downloadFile(url, destPath, onProgress, retriesLeft = DOWNLOAD_MAX_RETR
         const handleFailure = (error) => {
             if (settled) return;
             settled = true;
-            request.destroy();
+            if (request) request.destroy();
             cleanupFile();
 
             if (retriesLeft > 0) {
@@ -174,7 +134,7 @@ function downloadFile(url, destPath, onProgress, retriesLeft = DOWNLOAD_MAX_RETR
             }
         };
 
-        const request = https.get(url, (response) => {
+        const onResponse = (response) => {
             // 处理重定向（301/302/307/308）
             if ([301, 302, 307, 308].includes(response.statusCode)) {
                 settled = true;
@@ -184,8 +144,12 @@ function downloadFile(url, destPath, onProgress, retriesLeft = DOWNLOAD_MAX_RETR
                     reject(new Error('Redirect missing location header'));
                     return;
                 }
-                validateUrl(redirectUrl)
-                    .then(() => downloadFile(redirectUrl, destPath, onProgress, retriesLeft, idleTimeoutMs))
+                if (maxRedirects <= 0) {
+                    reject(new Error('Too many redirects'));
+                    return;
+                }
+                // 递归的 downloadFile 会经由 secureHttpsGet 重新校验并 pin IP
+                downloadFile(redirectUrl, destPath, onProgress, retriesLeft, idleTimeoutMs, maxRedirects - 1)
                     .then(resolve)
                     .catch(reject);
                 return;
@@ -228,33 +192,19 @@ function downloadFile(url, destPath, onProgress, retriesLeft = DOWNLOAD_MAX_RETR
             });
 
             file.on('error', handleFailure);
-        });
+        };
 
-        request.setTimeout(idleTimeoutMs, () => {
-            handleFailure(new Error('Download timed out: no data received'));
-        });
-
-        request.on('error', handleFailure);
+        // secureHttpsGet 会先做 DNS 校验（fail-closed），再把连接 pin 到已校验 IP
+        secureHttpsGet(url, onResponse)
+            .then((req) => {
+                request = req;
+                request.setTimeout(idleTimeoutMs, () => {
+                    handleFailure(new Error('Download timed out: no data received'));
+                });
+                request.on('error', handleFailure);
+            })
+            .catch(handleFailure);
     });
-}
-
-/**
- * 获取特定平台锁定的 yt-dlp 下载信息
- */
-function getYtDlpDownloadInfo() {
-    const binaryName = getYtDlpBinaryName();
-    const asset = PINNED_VERSIONS.ytdlp.assets[binaryName];
-    if (!asset) {
-        throw new Error(`Unsupported platform: ${os.platform()}`);
-    }
-    const url = PINNED_VERSIONS.ytdlp.urlTemplate
-        .replace('{version}', PINNED_VERSIONS.ytdlp.version)
-        .replace('{binary}', binaryName);
-    return {
-        url,
-        sha256: asset.sha256,
-        version: PINNED_VERSIONS.ytdlp.version,
-    };
 }
 
 function clearQuarantine(filePath) {
@@ -273,10 +223,15 @@ async function downloadYtDlp(onProgress) {
     }
 
     const destPath = getYtDlpPath();
-    const { url, sha256 } = getYtDlpDownloadInfo();
+    const binaryName = getYtDlpBinaryName();
+    const asset = PINNED_VERSIONS.ytdlp.assets[binaryName];
+    if (!asset) throw new Error(`Unsupported platform: ${os.platform()}`);
+    const url = PINNED_VERSIONS.ytdlp.urlTemplate
+        .replace('{version}', PINNED_VERSIONS.ytdlp.version)
+        .replace('{binary}', binaryName);
 
     await downloadFile(url, destPath, onProgress);
-    verifySha256(destPath, sha256);
+    verifySha256(destPath, asset.sha256);
 
     if (os.platform() !== 'win32') {
         fs.chmodSync(destPath, '755');
@@ -310,7 +265,7 @@ function getInstalledYtDlpVersion() {
 /**
  * 获取锁定的最新 yt-dlp 版本号
  */
-async function getLatestYtDlpVersion() {
+function getLatestYtDlpVersion() {
     return PINNED_VERSIONS.ytdlp.version;
 }
 
@@ -325,7 +280,7 @@ async function checkAndUpdateYtDlp(onProgress) {
         return true;
     }
 
-    const latestVersion = await getLatestYtDlpVersion();
+    const latestVersion = getLatestYtDlpVersion();
     if (installedVersion !== latestVersion) {
         await downloadYtDlp(onProgress);
         return true;

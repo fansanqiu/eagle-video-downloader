@@ -2710,9 +2710,6 @@ var require_binary = __commonJS({
         throw new Error(`SHA-256 verification failed for ${path.basename(filePath)}: expected ${expectedHash}, got ${hash}`);
       }
     }
-    function getFfmpegBinaryName() {
-      return os.platform() === "win32" ? "ffmpeg.exe" : "ffmpeg";
-    }
     function getYtDlpBinaryName() {
       const platform = os.platform();
       switch (platform) {
@@ -2732,35 +2729,18 @@ var require_binary = __commonJS({
     function isYtDlpInstalled2() {
       return fs.existsSync(getYtDlpPath());
     }
-    function getEagleDataDir() {
-      const platform = os.platform();
-      if (platform === "darwin") {
-        return path.join(os.homedir(), "Library", "Application Support", "Eagle");
-      } else if (platform === "win32") {
-        return path.join(os.homedir(), "AppData", "Roaming", "Eagle");
-      } else {
-        return path.join(os.homedir(), ".config", "Eagle");
-      }
-    }
-    function getEagleFfmpegDirName() {
-      const platform = os.platform();
-      const arch = os.arch();
-      const archName = arch === "arm64" ? "arm64" : "x64";
-      if (platform === "darwin") {
-        return `ffmpeg-mac-${archName}`;
-      } else if (platform === "win32") {
-        return `ffmpeg-win-${archName}`;
-      } else {
-        return `ffmpeg-linux-${archName}`;
-      }
-    }
     function getEagleFfmpegPath() {
-      return path.join(getEagleDataDir(), "Plugins", getEagleFfmpegDirName(), getFfmpegBinaryName());
+      const platform = os.platform();
+      const archName = os.arch() === "arm64" ? "arm64" : "x64";
+      const dataDir = platform === "darwin" ? path.join(os.homedir(), "Library", "Application Support", "Eagle") : platform === "win32" ? path.join(os.homedir(), "AppData", "Roaming", "Eagle") : path.join(os.homedir(), ".config", "Eagle");
+      const dirName = platform === "darwin" ? `ffmpeg-mac-${archName}` : platform === "win32" ? `ffmpeg-win-${archName}` : `ffmpeg-linux-${archName}`;
+      const bin = platform === "win32" ? "ffmpeg.exe" : "ffmpeg";
+      return path.join(dataDir, "Plugins", dirName, bin);
     }
     function resolveFfmpeg() {
-      const eagle2 = getEagleFfmpegPath();
-      if (fs.existsSync(eagle2))
-        return { source: "eagle", path: eagle2 };
+      const p = getEagleFfmpegPath();
+      if (fs.existsSync(p))
+        return { source: "eagle", path: p };
       return null;
     }
     function getFfmpegSource2() {
@@ -2863,19 +2843,6 @@ var require_binary = __commonJS({
         }).catch(handleFailure);
       });
     }
-    function getYtDlpDownloadInfo() {
-      const binaryName = getYtDlpBinaryName();
-      const asset = PINNED_VERSIONS.ytdlp.assets[binaryName];
-      if (!asset) {
-        throw new Error(`Unsupported platform: ${os.platform()}`);
-      }
-      const url = PINNED_VERSIONS.ytdlp.urlTemplate.replace("{version}", PINNED_VERSIONS.ytdlp.version).replace("{binary}", binaryName);
-      return {
-        url,
-        sha256: asset.sha256,
-        version: PINNED_VERSIONS.ytdlp.version
-      };
-    }
     function clearQuarantine(filePath) {
       try {
         execFileSync("xattr", ["-d", "com.apple.quarantine", filePath], { stdio: "ignore" });
@@ -2887,9 +2854,13 @@ var require_binary = __commonJS({
         fs.mkdirSync(BIN_DIR, { recursive: true });
       }
       const destPath = getYtDlpPath();
-      const { url, sha256 } = getYtDlpDownloadInfo();
+      const binaryName = getYtDlpBinaryName();
+      const asset = PINNED_VERSIONS.ytdlp.assets[binaryName];
+      if (!asset)
+        throw new Error(`Unsupported platform: ${os.platform()}`);
+      const url = PINNED_VERSIONS.ytdlp.urlTemplate.replace("{version}", PINNED_VERSIONS.ytdlp.version).replace("{binary}", binaryName);
       await downloadFile(url, destPath, onProgress);
-      verifySha256(destPath, sha256);
+      verifySha256(destPath, asset.sha256);
       if (os.platform() !== "win32") {
         fs.chmodSync(destPath, "755");
       }
@@ -2914,7 +2885,7 @@ var require_binary = __commonJS({
         proc.on("error", () => resolve(null));
       });
     }
-    async function getLatestYtDlpVersion2() {
+    function getLatestYtDlpVersion2() {
       return PINNED_VERSIONS.ytdlp.version;
     }
     async function checkAndUpdateYtDlp(onProgress) {
@@ -2923,7 +2894,7 @@ var require_binary = __commonJS({
         await downloadYtDlp2(onProgress);
         return true;
       }
-      const latestVersion = await getLatestYtDlpVersion2();
+      const latestVersion = getLatestYtDlpVersion2();
       if (installedVersion !== latestVersion) {
         await downloadYtDlp2(onProgress);
         return true;
@@ -3003,7 +2974,7 @@ var require_downloader = __commonJS({
     var { spawn } = require("child_process");
     var i18next3 = require_i18next();
     var { getYtDlpPath, getFfmpegPath, BIN_DIR, downloadYtDlp: downloadYtDlp2 } = require_binary();
-    var { isPrivateIp, validateUrl, secureHttpsGet } = require_net_guard();
+    var { validateUrl, secureHttpsGet } = require_net_guard();
     var cookieConsentGranted = false;
     function setCookieConsent(granted) {
       cookieConsentGranted = Boolean(granted);
@@ -3124,7 +3095,7 @@ var require_downloader = __commonJS({
                 const alreadyTriedSource = args.some((a) => typeof a === "string" && (isInstagramDomain(a) || matchDomain(a, ["youtube.com", "vimeo.com", "tiktok.com"])));
                 let extractedSourceUrl = null;
                 if (!alreadyTriedSource) {
-                  let sourceUrl = await extractPinterestSourceUrl(urlArg);
+                  let sourceUrl = await extractPinterestPinData(urlArg).then((d) => (d == null ? void 0 : d.sourceUrl) ?? null);
                   if (sourceUrl) {
                     sourceUrl = sourceUrl.replace(/\?img_index=\d+/, "");
                     extractedSourceUrl = sourceUrl;
@@ -3223,24 +3194,6 @@ var require_downloader = __commonJS({
     async function fetchPageHtml(url) {
       await validateUrl(url);
       return await fetchWithRedirect(url);
-    }
-    async function extractPinterestSourceUrl(pinterestUrl) {
-      try {
-        const html = await fetchPageHtml(pinterestUrl);
-        if (html) {
-          const linkMatches = html.match(
-            /https:\/\/[^\s"'<>\\]*?(?:instagram\.com|youtube\.com|vimeo\.com|tiktok\.com)[^\s"'<>\\]*/gi
-          );
-          if (linkMatches && linkMatches.length > 0) {
-            let cleanUrl = linkMatches[0].replace(/\\\/|\\/g, "/");
-            cleanUrl = cleanUrl.replace(/\\u0026/g, "&");
-            await validateUrl(cleanUrl);
-            return cleanUrl;
-          }
-        }
-      } catch (e) {
-      }
-      return null;
     }
     async function extractPinterestPinData(pinterestUrl) {
       try {
@@ -3639,34 +3592,7 @@ var require_downloader = __commonJS({
       getVideoInfo,
       cleanup,
       setCookieConsent,
-      hasCookieConsent,
-      validateUrl
-    };
-  }
-});
-
-// js/eagle.js
-var require_eagle = __commonJS({
-  "js/eagle.js"(exports2, module2) {
-    async function importToEagle(videoPath, metadata, sourceUrl) {
-      if (typeof eagle === "undefined") {
-        throw new Error(i18next.t("error.eagleApiNotAvailable"));
-      }
-      const importOptions = {
-        name: metadata.title || i18next.t("error.downloadedVideo"),
-        website: sourceUrl || void 0,
-        tags: [metadata.extractor || "video"],
-        annotation: metadata.description ? metadata.description.slice(0, 500) : ""
-      };
-      try {
-        const itemId = await eagle.item.addFromPath(videoPath, importOptions);
-        return itemId;
-      } catch (error) {
-        throw new Error(`${i18next.t("error.eagleImportFailed")}: ${error.message}`);
-      }
-    }
-    module2.exports = {
-      importToEagle
+      hasCookieConsent
     };
   }
 });
@@ -4357,9 +4283,24 @@ var {
 } = require_binary();
 var { isNetworkError } = require_net_guard();
 var downloader = require_downloader();
-var eagleApi = require_eagle();
 var ui = require_ui();
 var isInitialized = false;
+async function importToEagle(videoPath, metadata, sourceUrl) {
+  if (typeof eagle === "undefined") {
+    throw new Error(i18next2.t("error.eagleApiNotAvailable"));
+  }
+  const importOptions = {
+    name: metadata.title || i18next2.t("error.downloadedVideo"),
+    website: sourceUrl || void 0,
+    tags: [metadata.extractor || "video"],
+    annotation: metadata.description ? metadata.description.slice(0, 500) : ""
+  };
+  try {
+    return await eagle.item.addFromPath(videoPath, importOptions);
+  } catch (error) {
+    throw new Error(`${i18next2.t("error.eagleImportFailed")}: ${error.message}`);
+  }
+}
 var COOKIE_CONSENT_KEY = "eagle-video-downloader.cookieConsent";
 var AUTO_ADD_SOURCE_KEY = "eagle-video-downloader.autoAddSource";
 function getCookieConsentPref() {
@@ -4574,7 +4515,7 @@ async function executeDownload(item) {
     ui.updateQueueItem(item.id, item);
     for (const result of results) {
       const sourceUrl = getAutoAddSourcePref() ? item.url : void 0;
-      await eagleApi.importToEagle(result.path, result.metadata, sourceUrl);
+      await importToEagle(result.path, result.metadata, sourceUrl);
       downloader.cleanup(result.path);
     }
   } catch (error) {
@@ -4657,23 +4598,17 @@ function loadDepsInfo(options = {}) {
 }
 function loadYtdlpUpdateStatus() {
   ui.updateYtdlpCard("installed", { checkingUpdate: true });
-  const installedVersionP = getInstalledYtDlpVersion();
-  const latestVersionP = getLatestYtDlpVersion();
-  installedVersionP.then((installedVersion) => {
+  const latestVersion = getLatestYtDlpVersion();
+  getInstalledYtDlpVersion().then((installedVersion) => {
     if (!installedVersion) {
       ui.updateYtdlpCard("missing");
       return;
     }
-    ui.updateYtdlpCard("installed", { version: installedVersion, checkingUpdate: true });
-    latestVersionP.then((latestVersion) => {
-      if (installedVersion !== latestVersion) {
-        ui.updateYtdlpCard("outdated", { installedVersion, latestVersion });
-      } else {
-        ui.updateYtdlpCard("latest", { version: installedVersion });
-      }
-    }).catch(() => {
-      ui.updateYtdlpCard("installed", { version: installedVersion });
-    });
+    if (installedVersion !== latestVersion) {
+      ui.updateYtdlpCard("outdated", { installedVersion, latestVersion });
+    } else {
+      ui.updateYtdlpCard("latest", { version: installedVersion });
+    }
   }).catch(() => {
   });
 }

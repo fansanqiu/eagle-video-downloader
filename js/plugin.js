@@ -16,11 +16,27 @@ const {
 } = require("./binary");
 const { isNetworkError } = require("./net-guard");
 const downloader = require("./downloader");
-const eagleApi = require("./eagle");
 const ui = require("./ui");
 
 // 状态管理
 let isInitialized = false;
+
+async function importToEagle(videoPath, metadata, sourceUrl) {
+  if (typeof eagle === "undefined") {
+    throw new Error(i18next.t("error.eagleApiNotAvailable"));
+  }
+  const importOptions = {
+    name: metadata.title || i18next.t("error.downloadedVideo"),
+    website: sourceUrl || undefined,
+    tags: [metadata.extractor || "video"],
+    annotation: metadata.description ? metadata.description.slice(0, 500) : "",
+  };
+  try {
+    return await eagle.item.addFromPath(videoPath, importOptions);
+  } catch (error) {
+    throw new Error(`${i18next.t("error.eagleImportFailed")}: ${error.message}`);
+  }
+}
 
 // Cookie 显式授权存储 key
 const COOKIE_CONSENT_KEY = "eagle-video-downloader.cookieConsent";
@@ -328,7 +344,7 @@ async function executeDownload(item) {
 
     for (const result of results) {
       const sourceUrl = getAutoAddSourcePref() ? item.url : undefined;
-      await eagleApi.importToEagle(result.path, result.metadata, sourceUrl);
+      await importToEagle(result.path, result.metadata, sourceUrl);
       downloader.cleanup(result.path);
     }
   } catch (error) {
@@ -441,23 +457,15 @@ function loadDepsInfo(options = {}) {
  */
 function loadYtdlpUpdateStatus() {
   ui.updateYtdlpCard("installed", { checkingUpdate: true });
+  const latestVersion = getLatestYtDlpVersion();
 
-  const installedVersionP = getInstalledYtDlpVersion();
-  const latestVersionP    = getLatestYtDlpVersion();
-
-  installedVersionP.then((installedVersion) => {
+  getInstalledYtDlpVersion().then((installedVersion) => {
     if (!installedVersion) { ui.updateYtdlpCard("missing"); return; }
-    ui.updateYtdlpCard("installed", { version: installedVersion, checkingUpdate: true });
-
-    latestVersionP.then((latestVersion) => {
-      if (installedVersion !== latestVersion) {
-        ui.updateYtdlpCard("outdated", { installedVersion, latestVersion });
-      } else {
-        ui.updateYtdlpCard("latest", { version: installedVersion });
-      }
-    }).catch(() => {
-      ui.updateYtdlpCard("installed", { version: installedVersion });
-    });
+    if (installedVersion !== latestVersion) {
+      ui.updateYtdlpCard("outdated", { installedVersion, latestVersion });
+    } else {
+      ui.updateYtdlpCard("latest", { version: installedVersion });
+    }
   }).catch(() => {});
 }
 

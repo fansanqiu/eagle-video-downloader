@@ -10,7 +10,7 @@ const { spawn } = require("child_process");
 const i18next = require("i18next");
 
 const { getYtDlpPath, getFfmpegPath, BIN_DIR, downloadYtDlp } = require("./binary");
-const { isPrivateIp, validateUrl, secureHttpsGet } = require("./net-guard");
+const { validateUrl, secureHttpsGet } = require("./net-guard");
 
 // Cookie 显式授权状态
 let cookieConsentGranted = false;
@@ -165,7 +165,7 @@ function execYtDlp(args, onProgress, onOutput, allowRecovery = true) {
             const alreadyTriedSource = args.some(a => typeof a === 'string' && (isInstagramDomain(a) || matchDomain(a, ['youtube.com', 'vimeo.com', 'tiktok.com'])));
             let extractedSourceUrl = null;
             if (!alreadyTriedSource) {
-              let sourceUrl = await extractPinterestSourceUrl(urlArg);
+              let sourceUrl = await extractPinterestPinData(urlArg).then(d => d?.sourceUrl ?? null);
               if (sourceUrl) {
                 sourceUrl = sourceUrl.replace(/\?img_index=\d+/, "");
                 extractedSourceUrl = sourceUrl;
@@ -277,27 +277,6 @@ function fetchWithRedirect(url, maxRedirects = 5) {
 async function fetchPageHtml(url) {
   await validateUrl(url);
   return await fetchWithRedirect(url);
-}
-
-/**
- * 从 Pinterest 页面抓取第三方来源链接
- */
-async function extractPinterestSourceUrl(pinterestUrl) {
-  try {
-    const html = await fetchPageHtml(pinterestUrl);
-    if (html) {
-      const linkMatches = html.match(
-        /https:\/\/[^\s"'<>\\]*?(?:instagram\.com|youtube\.com|vimeo\.com|tiktok\.com)[^\s"'<>\\]*/gi
-      );
-      if (linkMatches && linkMatches.length > 0) {
-        let cleanUrl = linkMatches[0].replace(/\\\/|\\/g, "/");
-        cleanUrl = cleanUrl.replace(/\\u0026/g, "&");
-        await validateUrl(cleanUrl);
-        return cleanUrl;
-      }
-    }
-  } catch (e) {}
-  return null;
 }
 
 /**
@@ -766,5 +745,4 @@ module.exports = {
   cleanup,
   setCookieConsent,
   hasCookieConsent,
-  validateUrl,
 };
