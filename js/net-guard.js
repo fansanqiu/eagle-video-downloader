@@ -74,11 +74,7 @@ async function validateUrl(url) {
   }
 
   try {
-    const [v4Addrs, v6Addrs] = await Promise.all([
-      dns.promises.resolve4(hostname).catch(() => []),
-      dns.promises.resolve6(hostname).catch(() => []),
-    ]);
-    const addresses = [...v4Addrs, ...v6Addrs];
+    const addresses = await dns.promises.resolve4(hostname).catch(() => []);
     if (addresses.length === 0) {
       throw new Error(`DNS resolution returned no addresses for ${hostname}`);
     }
@@ -95,16 +91,16 @@ async function validateUrl(url) {
 }
 
 /**
- * 生成一个固定到已校验 IP 列表的 dns.lookup 替代函数
+ * 生成一个固定到已校验 IPv4 地址列表的 dns.lookup 替代函数
  * 用于 https 请求的 lookup 选项，防止校验后连接前发生 DNS rebinding。
- * 返回全部已校验地址，让 Node 内建 happy-eyeballs 在多地址间自动 fallback。
+ * 返回全部已校验地址，强制使用 IPv4。
  * TLS servername 仍使用原始 hostname，证书校验不受影响。
  */
 function pinnedLookup(addresses) {
-  const list = addresses.map(ip => ({ address: ip, family: net.isIPv6(ip) ? 6 : 4 }));
+  const list = addresses.map(ip => ({ address: ip, family: 4 }));
   return (hostname, options, callback) => {
     if (options && options.all) return callback(null, list);
-    return callback(null, list[0].address, list[0].family);
+    return callback(null, list[0].address, 4);
   };
 }
 

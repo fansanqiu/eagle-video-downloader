@@ -1,6 +1,6 @@
 /**
  * 视频下载模块
- * 处理视频下载核心逻辑
+ * 处理视频下载核心调度逻辑，具体站点差异由 js/sites/ 适配器处理
  */
 
 const path = require("path");
@@ -11,6 +11,7 @@ const i18next = require("i18next");
 
 const { getYtDlpPath, getFfmpegPath, BIN_DIR, downloadYtDlp } = require("./binary");
 const { validateUrl, secureHttpsGet } = require("./net-guard");
+const siteAdapters = require("./sites");
 
 // Cookie 显式授权状态
 let cookieConsentGranted = false;
@@ -21,26 +22,6 @@ function setCookieConsent(granted) {
 
 function hasCookieConsent() {
   return cookieConsentGranted;
-}
-
-/**
- * 校验 URL 目标域名（精确与子域名匹配）
- */
-function matchDomain(url, domains) {
-  try {
-    const host = new URL(url).hostname.toLowerCase();
-    return domains.some(d => host === d || host.endsWith('.' + d));
-  } catch {
-    return false;
-  }
-}
-
-function isPinterestDomain(url) {
-  return matchDomain(url, ['pinterest.com', 'pin.it']);
-}
-
-function isInstagramDomain(url) {
-  return matchDomain(url, ['instagram.com']);
 }
 
 /**
@@ -74,9 +55,11 @@ function execYtDlp(args, onProgress, onOutput, allowRecovery = true) {
         .catch(() => reject(new Error(`${i18next.t("error.failedToExecuteYtdlp")}: ${error.message}`)));
     };
 
+    const finalArgs = args.includes("--force-ipv4") ? args : ["--force-ipv4", ...args];
+
     let proc;
     try {
-      proc = spawn(ytdlp, args, { cwd: BIN_DIR });
+      proc = spawn(ytdlp, finalArgs, { cwd: BIN_DIR });
     } catch (error) {
       if (allowRecovery && isCorruptedBinaryError(error)) {
         recoverFromCorruptBinary(error);
@@ -134,91 +117,31 @@ function execYtDlp(args, onProgress, onOutput, allowRecovery = true) {
       reject(new Error(`${i18next.t("error.failedToExecuteYtdlp")}: ${detail}`));
     });
 
-    proc.on("close", (code) => {
+    proc.on("close", async (code) => {
       if (code === 0) {
         resolve(stdout);
       } else {
-        // BiliBili 412 时自动补充站点参数重试一次
-        const is412 = stderr.includes("HTTP Error 412");
-        const alreadyHasReferer = args.includes("--referer");
-        if (is412 && !alreadyHasReferer) {
-          const urlArg = args.find(a => typeof a === 'string' && a.startsWith('https'));
-          const extraArgs = urlArg ? getSiteArgs(urlArg) : [];
-          if (extraArgs.length > 0) {
-            execYtDlp([...args, ...extraArgs], onProgress, onOutput)
-              .then(resolve)
-              .catch(() =>
-                reject(new Error(`${i18next.t("error.ytdlpExitedWithCode")} ${code}: ${stderr}`))
-              );
-            return;
-          }
-        }
-
-        // Pinterest "No video formats found" 处理：降级链 (第三方来源 -> Cookie opt-in 重试)
-        const isNoFormats = stderr.includes("No video formats found") || stderr.includes("[Pinterest]") || stderr.includes("login") || stderr.includes("redirect");
         const urlArg = args.find(a => typeof a === 'string' && a.startsWith('https'));
-        const isPinterestUrl = urlArg && isPinterestDomain(urlArg);
-        const isInstagramUrl = urlArg && isInstagramDomain(urlArg);
-
-        if (isNoFormats && isPinterestUrl) {
-          (async () => {
-            const alreadyTriedSource = args.some(a => typeof a === 'string' && (isInstagramDomain(a) || matchDomain(a, ['youtube.com', 'vimeo.com', 'tiktok.com'])));
-            let extractedSourceUrl = null;
-            if (!alreadyTriedSource) {
-              let sourceUrl = await extractPinterestPinData(urlArg).then(d => d?.sourceUrl ?? null);
-              if (sourceUrl) {
-                sourceUrl = sourceUrl.replace(/\?img_index=\d+/, "");
-                extractedSourceUrl = sourceUrl;
-
-                const oldSiteArgs = getSiteArgs(urlArg);
-                let cleanedArgs = args.filter(a => !oldSiteArgs.includes(a) && a !== "--cookies-from-browser" && a !== "chrome");
-                const newSiteArgs = getSiteArgs(sourceUrl);
-
-                const newArgs = cleanedArgs.map(a => a === urlArg ? sourceUrl : a);
-                newArgs.push(...newSiteArgs);
-
-                try {
-                  const res = await execYtDlp(newArgs, onProgress, onOutput, false);
-                  resolve(res);
-                  return;
-                } catch (e) {
-                  if (hasCookieConsent()) {
-                    try {
-                      const res = await execYtDlp([...newArgs, "--cookies-from-browser", "chrome"], onProgress, onOutput, false);
-                      resolve(res);
-                      return;
-                    } catch (e2) {}
-                  }
-                }
-              }
+        if (urlArg) {
+          try {
+            const recoveryResult = await siteAdapters.handleExecFailure({
+              code,
+              stderr,
+              args,
+              onProgress,
+              onOutput,
+              execYtDlp,
+              hasCookieConsent,
+              getSiteArgsForUrl: siteAdapters.getSiteArgs,
+              url: urlArg,
+            });
+            if (recoveryResult !== null) {
+              resolve(recoveryResult);
+              return;
             }
-
-            if (!extractedSourceUrl && hasCookieConsent()) {
-              const alreadyTriedCookies = args.includes("--cookies-from-browser");
-              if (!alreadyTriedCookies) {
-                try {
-                  const res = await execYtDlp([...args, "--cookies-from-browser", "chrome"], onProgress, onOutput, false);
-                  resolve(res);
-                  return;
-                } catch (e) {}
-              }
-            }
-
-            reject(
-              new Error(`${i18next.t("error.ytdlpExitedWithCode")} ${code}: ${stderr}`)
-            );
-          })();
-          return;
-        }
-
-        // Instagram：仅在用户显式 Opt-in 时使用浏览器 Cookie 重试
-        if (isInstagramUrl && !args.includes("--cookies-from-browser") && hasCookieConsent()) {
-          execYtDlp([...args, "--cookies-from-browser", "chrome"], onProgress, onOutput, false)
-            .then(resolve)
-            .catch(() =>
-              reject(new Error(`${i18next.t("error.ytdlpExitedWithCode")} ${code}: ${stderr}`))
-            );
-          return;
+          } catch (recoveryErr) {
+            // 降级失败时继续抛出原始错误
+          }
         }
 
         reject(
@@ -227,152 +150,6 @@ function execYtDlp(args, onProgress, onOutput, allowRecovery = true) {
       }
     });
   });
-}
-
-function fetchWithRedirect(url, maxRedirects = 5) {
-  return new Promise(async (resolve) => {
-    if (maxRedirects <= 0) return resolve(null);
-    try {
-      const u = new URL(url);
-      const req = await secureHttpsGet(
-        url,
-        {
-          headers: {
-            "User-Agent":
-              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          },
-        },
-        async (res) => {
-          if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-            let redirectUrl = res.headers.location;
-            if (redirectUrl.startsWith("/")) {
-              redirectUrl = `${u.protocol}//${u.host}${redirectUrl}`;
-            }
-            try {
-              await validateUrl(redirectUrl);
-              return fetchWithRedirect(redirectUrl, maxRedirects - 1).then(resolve);
-            } catch (err) {
-              return resolve(null);
-            }
-          }
-          let html = "";
-          res.on("data", (chunk) => (html += chunk));
-          res.on("end", () => resolve(html));
-        }
-      );
-      req.on("error", () => resolve(null));
-      req.setTimeout(8000, () => {
-        req.destroy();
-        resolve(null);
-      });
-    } catch (e) {
-      resolve(null);
-    }
-  });
-}
-
-/**
- * 抓取网页 HTML 内容（统一使用安全重定向处理）
- */
-async function fetchPageHtml(url) {
-  await validateUrl(url);
-  return await fetchWithRedirect(url);
-}
-
-/**
- * 从 Pinterest 页面 SSR 数据中提取 pin 完整元数据
- */
-async function extractPinterestPinData(pinterestUrl) {
-  try {
-    const html = await fetchPageHtml(pinterestUrl);
-    if (!html) return null;
-
-    const pinIdMatch = pinterestUrl.match(/pin\/([\d]+)/);
-    const pinId = pinIdMatch ? pinIdMatch[1] : null;
-
-    const result = {
-      isVideo: false,
-      videos: null,
-      imageUrl: null,
-      title: '',
-      description: '',
-      link: null,
-      sourceUrl: null,
-    };
-
-    if (pinId) {
-      const entityIdx = html.indexOf(`"entityId":"${pinId}"`);
-      if (entityIdx !== -1) {
-        const start = Math.max(0, entityIdx - 3000);
-        const end = Math.min(html.length, entityIdx + 3000);
-        const context = html.substring(start, end);
-
-        const isVideoMatch = context.match(/"isVideo"\s*:\s*(true|false)/);
-        if (isVideoMatch) result.isVideo = isVideoMatch[1] === 'true';
-
-        const videosMatch = context.match(/"videos"\s*:\s*(null|\{)/);
-        if (videosMatch && videosMatch[1] !== 'null') result.videos = true;
-
-        const descMatch = context.match(/"description"\s*:\s*"([^"]{0,500})"/);
-        if (descMatch) result.description = descMatch[1];
-
-        const titleMatch = context.match(/"seoTitle"\s*:\s*"([^"]{0,200})"/);
-        if (titleMatch && titleMatch[1]) result.title = titleMatch[1];
-
-        const linkMatch = context.match(/"link"\s*:\s*"([^"]+)"/);
-        if (linkMatch) result.link = linkMatch[1];
-      }
-    }
-
-    if (pinId) {
-      const entityIdx = html.indexOf(`"entityId":"${pinId}"`);
-      if (entityIdx !== -1) {
-        const imgSearchStart = Math.max(0, entityIdx - 8000);
-        const imgSearchEnd = Math.min(html.length, entityIdx + 8000);
-        const imgContext = html.substring(imgSearchStart, imgSearchEnd);
-        
-        const origMatch = imgContext.match(/https:\/\/i\.pinimg\.com\/originals\/([a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9]+\.(?:jpg|png|gif|webp))/i);
-        if (origMatch) {
-          result.imageUrl = `https://i.pinimg.com/originals/${origMatch[1]}`;
-        } else {
-          const anyMatch = imgContext.match(/https:\/\/i\.pinimg\.com\/(?:1200x|736x|564x|474x|236x|136x136|60x60|600x315)\/([a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9]+\.(?:jpg|png|gif|webp))/i);
-          if (anyMatch) {
-            result.imageUrl = `https://i.pinimg.com/originals/${anyMatch[1]}`;
-          }
-        }
-      }
-    }
-
-    if (!result.imageUrl) {
-      const originalsMatch = html.match(/https:\/\/i\.pinimg\.com\/originals\/[a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9]+\.(?:jpg|png|gif|webp)/i);
-      if (originalsMatch) {
-        result.imageUrl = originalsMatch[0];
-      } else {
-        const anyImgMatch = html.match(/https:\/\/i\.pinimg\.com\/(?:1200x|736x|564x|474x)\/([a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9]+\.(?:jpg|png|gif|webp))/i);
-        if (anyImgMatch) {
-          result.imageUrl = `https://i.pinimg.com/originals/${anyImgMatch[1]}`;
-        }
-      }
-    }
-
-    const sourceMatches = html.match(
-      /https:\/\/[^\s"'<>\\]*?(?:instagram\.com|youtube\.com|vimeo\.com|tiktok\.com)[^\s"'<>\\]*/gi
-    );
-    if (sourceMatches && sourceMatches.length > 0) {
-      let cleanUrl = sourceMatches[0].replace(/\\\/|\\/g, "/");
-      cleanUrl = cleanUrl.replace(/\\u0026/g, "&");
-      result.sourceUrl = cleanUrl;
-    }
-
-    if (!result.title && result.description) {
-      result.title = result.description.split('\n')[0].substring(0, 100);
-    }
-    if (!result.title) result.title = 'Pinterest Pin';
-
-    return result;
-  } catch (e) {
-    return null;
-  }
 }
 
 /**
@@ -399,7 +176,6 @@ async function downloadFile(url, outputPath, onProgress, maxRedirects = 5) {
               redirectUrl = `${u.protocol}//${u.host}${redirectUrl}`;
             }
             res.resume();
-            // 递归下载会对新目标重新 validateUrl + pin IP
             downloadFile(redirectUrl, outputPath, onProgress, maxRedirects - 1).then(resolve).catch(reject);
             return;
           }
@@ -436,130 +212,28 @@ async function downloadFile(url, outputPath, onProgress, maxRedirects = 5) {
 }
 
 /**
- * 返回特定站点需要的额外 yt-dlp 参数
- */
-function getSiteArgs(url) {
-  try {
-    const host = new URL(url).hostname.replace(/^www\./, '').toLowerCase();
-    if (host === 'bilibili.com' || host === 'b23.tv' || host.endsWith('.bilibili.com')) {
-      return [
-        '--referer', 'https://www.bilibili.com',
-        '--add-header', 'User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      ];
-    }
-    if (host === 'twitter.com' || host === 'x.com' || host.endsWith('.twitter.com') || host.endsWith('.x.com')) {
-      return [
-        '--ignore-no-formats-error',
-      ];
-    }
-    if (host === 'pinterest.com' || host.endsWith('.pinterest.com') || host === 'pin.it') {
-      return [
-        '--referer', 'https://www.pinterest.com/',
-        '--add-header', 'User-Agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      ];
-    }
-    if (host === 'instagram.com' || host.endsWith('.instagram.com')) {
-      return [
-        '--referer', 'https://www.instagram.com/',
-        '--add-header', 'User-Agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      ];
-    }
-  } catch (e) {}
-  return [];
-}
-
-/**
- * 标准化 URL
- */
-function normalizeUrl(url) {
-  try {
-    const urlObj = new URL(url);
-
-    if (
-      urlObj.hostname === "vimeo.com" ||
-      urlObj.hostname === "www.vimeo.com"
-    ) {
-      const pathParts = urlObj.pathname.split("/").filter((p) => p);
-      const videoId = pathParts.find((part) => /^\d+$/.test(part));
-
-      if (videoId) {
-        return `https://player.vimeo.com/video/${videoId}`;
-      }
-    }
-
-    return url;
-  } catch (error) {
-    return url;
-  }
-}
-
-/**
  * 获取视频信息
  */
 async function getVideoInfo(url) {
   await validateUrl(url);
-  url = normalizeUrl(url);
+  url = siteAdapters.normalizeUrl(url);
 
-  const isPinterest = isPinterestDomain(url);
-
-  if (isPinterest) {
-    const pinData = await extractPinterestPinData(url);
-    if (pinData) {
-      const hasVideoContent = pinData.isVideo || pinData.videos;
-      const hasVideoSource = !!pinData.sourceUrl;
-
-      if (!hasVideoContent && !hasVideoSource) {
-        if (pinData.imageUrl) {
-          return {
-            type: 'image',
-            imageUrl: pinData.imageUrl,
-            title: pinData.title || 'Pinterest Pin',
-            description: pinData.description || '',
-            duration: 0,
-            thumbnail: pinData.imageUrl,
-            uploader: 'Pinterest',
-            extractor: 'pinterest',
-            webpage_url: url,
-            id: null,
-          };
-        }
-      }
-
-      if (hasVideoSource && !hasVideoContent) {
-        const targetUrl = pinData.sourceUrl.replace(/\?img_index=\d+/, "");
-        await validateUrl(targetUrl);
-        const args = ["--dump-json", "--no-warnings", ...getSiteArgs(targetUrl), targetUrl];
-        try {
-          const output = await execYtDlp(args);
-          return parseYtDlpOutput(output, targetUrl);
-        } catch (e) {
-          if (pinData.imageUrl) {
-            return {
-              type: 'image',
-              imageUrl: pinData.imageUrl,
-              title: pinData.title || 'Pinterest Pin',
-              description: pinData.description || '',
-              duration: 0,
-              thumbnail: pinData.imageUrl,
-              uploader: 'Pinterest',
-              extractor: 'pinterest',
-              webpage_url: url,
-              id: null,
-            };
-          }
-          throw e;
-        }
-      }
-    }
+  const customInfo = await siteAdapters.customGetInfo(url, {
+    execYtDlp,
+    parseYtDlpOutput,
+    getSiteArgsForUrl: siteAdapters.getSiteArgs,
+  });
+  if (customInfo) {
+    return customInfo;
   }
 
-  const args = ["--dump-json", "--no-warnings", ...getSiteArgs(url), url];
+  const args = ["--dump-json", "--no-warnings", ...siteAdapters.getSiteArgs(url), url];
 
   let output;
   try {
     output = await execYtDlp(args);
   } catch (err) {
-    if (isPinterest && hasCookieConsent()) {
+    if (hasCookieConsent()) {
       const cookieArgs = [...args, "--cookies-from-browser", "chrome"];
       output = await execYtDlp(cookieArgs);
     } else {
@@ -686,7 +360,7 @@ async function downloadVideo(url, onProgress, onStatus, preloadedInfo = null) {
   let targetUrl = (videoInfo && typeof videoInfo.webpage_url === 'string' && videoInfo.webpage_url.startsWith('https')) 
     ? videoInfo.webpage_url 
     : url;
-  targetUrl = normalizeUrl(targetUrl);
+  targetUrl = siteAdapters.normalizeUrl(targetUrl);
   await validateUrl(targetUrl);
 
   const args = [
@@ -698,7 +372,7 @@ async function downloadVideo(url, onProgress, onStatus, preloadedInfo = null) {
     "--merge-output-format",
     "mp4",
     "--no-warnings",
-    ...getSiteArgs(targetUrl),
+    ...siteAdapters.getSiteArgs(targetUrl),
   ];
 
   const ffmpeg = getFfmpegPath();

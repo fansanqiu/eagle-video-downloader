@@ -12,7 +12,6 @@ const {
   getInstalledYtDlpVersion,
   getLatestYtDlpVersion,
   getFfmpegSource,
-  getFfmpegVersion,
 } = require("./binary");
 const { isNetworkError } = require("./net-guard");
 const downloader = require("./downloader");
@@ -443,12 +442,6 @@ function loadDepsInfo(options = {}) {
     ui.updateYtdlpCard("latest", { version: options.ytdlpKnownLatest });
   } else {
     loadYtdlpUpdateStatus();
-  }
-
-  if (ffmpegSource) {
-    getFfmpegVersion().then((ffmpegVersion) => {
-      ui.updateFfmpegCard('eagle', { version: ffmpegVersion });
-    }).catch(() => {});
   }
 }
 

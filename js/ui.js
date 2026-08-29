@@ -434,9 +434,7 @@ function updateFfmpegCard(state, data = {}) {
       statusEl.classList.add("ok");
       statusEl.textContent = i18next.t("deps.eagleBuiltin");
       if (detailEl) {
-        detailEl.textContent = data.version
-          ? i18next.t("deps.versionInstalled", { version: data.version })
-          : i18next.t("deps.ffmpegManaged");
+        detailEl.textContent = i18next.t("deps.ffmpegManaged");
       }
       if (actionsEl) actionsEl.innerHTML = "";
       break;

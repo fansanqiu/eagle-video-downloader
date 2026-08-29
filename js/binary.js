@@ -19,11 +19,11 @@ const BIN_DIR = path.join(PLUGIN_ROOT, 'bin');
  */
 const PINNED_VERSIONS = {
     ytdlp: {
-        version: '2026.07.04',
+        version: '2026.08.19',
         assets: {
-            'yt-dlp.exe':   { sha256: '52fe3c26dcf71fbdc85b528589020bb0b8e383155cfa81b64dd447bbe35e24b8' },
-            'yt-dlp_macos': { sha256: '498bd0dae17855c599d371d68ec5bafc439a9d8640e838be25c765a9792f261b' },
-            'yt-dlp_linux': { sha256: '6bbb3d314cde4febe36e5fa1d55462e29c974f63444e707871834f6d8cc210ae' },
+            'yt-dlp.exe':   { sha256: '66674953fe251b89f4d08c5f0e35e0728679bd67ab3d7d05c0562af101dd3e7a' },
+            'yt-dlp_macos': { sha256: '0f192b7ec147ab6288885d6351d9ab67367640029b4377576ef46dd79cf7b202' },
+            'yt-dlp_linux': { sha256: '58162f9bfdc27458ea47bfcb311cf47028f17d8154a8bf7d689861d46399230a' },
         },
         urlTemplate: 'https://github.com/yt-dlp/yt-dlp/releases/download/{version}/{binary}',
     },
@@ -289,28 +289,6 @@ async function checkAndUpdateYtDlp(onProgress) {
 }
 
 /**
- * 获取 Eagle 内置 ffmpeg 的版本号
- */
-function getFfmpegVersion() {
-    return new Promise((resolve) => {
-        const ffmpegPath = getFfmpegPath();
-        if (!ffmpegPath || !fs.existsSync(ffmpegPath)) {
-            resolve(null);
-            return;
-        }
-        const proc = spawn(ffmpegPath, ['-version']);
-        let output = '';
-        proc.stdout.on('data', (d) => { output += d.toString(); });
-        proc.stderr.on('data', (d) => { output += d.toString(); });
-        proc.on('close', () => {
-            const match = output.match(/ffmpeg version (\S+)/);
-            resolve(match ? match[1] : null);
-        });
-        proc.on('error', () => resolve(null));
-    });
-}
-
-/**
  * 卸载 yt-dlp
  */
 function uninstallYtDlp() {
@@ -345,7 +323,6 @@ module.exports = {
     BIN_DIR,
     getYtDlpPath,
     getFfmpegPath,
-    getFfmpegVersion,
     getFfmpegSource,
     isYtDlpInstalled,
     downloadYtDlp,
