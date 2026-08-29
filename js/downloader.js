@@ -549,7 +549,7 @@ async function getVideoInfo(url) {
       if (hasVideoSource && !hasVideoContent) {
         const targetUrl = pinData.sourceUrl.replace(/\?img_index=\d+/, "");
         await validateUrl(targetUrl);
-        const args = ["--dump-json", "--no-warnings", "--force-ipv4", ...getSiteArgs(targetUrl), targetUrl];
+        const args = ["--dump-json", "--no-warnings", ...getSiteArgs(targetUrl), targetUrl];
         try {
           const output = await execYtDlp(args);
           return parseYtDlpOutput(output, targetUrl);
@@ -574,7 +574,7 @@ async function getVideoInfo(url) {
     }
   }
 
-  const args = ["--dump-json", "--no-warnings", "--force-ipv4", ...getSiteArgs(url), url];
+  const args = ["--dump-json", "--no-warnings", ...getSiteArgs(url), url];
 
   let output;
   try {
@@ -719,7 +719,6 @@ async function downloadVideo(url, onProgress, onStatus, preloadedInfo = null) {
     "--merge-output-format",
     "mp4",
     "--no-warnings",
-    "--force-ipv4",
     ...getSiteArgs(targetUrl),
   ];
 

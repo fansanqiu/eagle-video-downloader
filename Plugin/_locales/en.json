@@ -54,6 +54,7 @@
     "ytdlpPermissionDenied": "yt-dlp has no execute permission",
     "failedToExecuteYtdlp": "Failed to execute yt-dlp",
     "ytdlpExitedWithCode": "yt-dlp exited with code",
+    "networkUnavailable": "Network unavailable — check your connection or proxy settings and retry",
     "unknown": "Unknown"
   },
   "progress": {

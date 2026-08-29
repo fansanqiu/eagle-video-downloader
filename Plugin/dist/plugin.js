@@ -2639,14 +2639,16 @@ var require_net_guard = __commonJS({
       }
     }
     function pinnedLookup(addresses) {
-      const ip = addresses[0];
-      const family = net.isIPv6(ip) ? 6 : 4;
+      const list = addresses.map((ip) => ({ address: ip, family: net.isIPv6(ip) ? 6 : 4 }));
       return (hostname, options, callback) => {
-        if (options && options.all) {
-          return callback(null, [{ address: ip, family }]);
-        }
-        return callback(null, ip, family);
+        if (options && options.all)
+          return callback(null, list);
+        return callback(null, list[0].address, list[0].family);
       };
+    }
+    var NETWORK_ERROR_PATTERNS = /timed out|timeout|ENOTFOUND|ECONNREFUSED|ECONNRESET|EHOSTUNREACH|ENETUNREACH|EAI_AGAIN|socket hang up|DNS resolution/i;
+    function isNetworkError2(err) {
+      return NETWORK_ERROR_PATTERNS.test((err == null ? void 0 : err.message) || "") || NETWORK_ERROR_PATTERNS.test((err == null ? void 0 : err.code) || "");
     }
     async function secureHttpsGet(url, options, callback) {
       if (typeof options === "function") {
@@ -2662,7 +2664,8 @@ var require_net_guard = __commonJS({
       isPrivateIp,
       validateUrl,
       pinnedLookup,
-      secureHttpsGet
+      secureHttpsGet,
+      isNetworkError: isNetworkError2
     };
   }
 });
@@ -3460,7 +3463,7 @@ var require_downloader = __commonJS({
           if (hasVideoSource && !hasVideoContent) {
             const targetUrl = pinData.sourceUrl.replace(/\?img_index=\d+/, "");
             await validateUrl(targetUrl);
-            const args2 = ["--dump-json", "--no-warnings", "--force-ipv4", ...getSiteArgs(targetUrl), targetUrl];
+            const args2 = ["--dump-json", "--no-warnings", ...getSiteArgs(targetUrl), targetUrl];
             try {
               const output2 = await execYtDlp(args2);
               return parseYtDlpOutput(output2, targetUrl);
@@ -3484,7 +3487,7 @@ var require_downloader = __commonJS({
           }
         }
       }
-      const args = ["--dump-json", "--no-warnings", "--force-ipv4", ...getSiteArgs(url), url];
+      const args = ["--dump-json", "--no-warnings", ...getSiteArgs(url), url];
       let output;
       try {
         output = await execYtDlp(args);
@@ -3602,7 +3605,6 @@ var require_downloader = __commonJS({
         "--merge-output-format",
         "mp4",
         "--no-warnings",
-        "--force-ipv4",
         ...getSiteArgs(targetUrl)
       ];
       const ffmpeg = getFfmpegPath();
@@ -4170,6 +4172,7 @@ var require_en = __commonJS({
         ytdlpPermissionDenied: "yt-dlp has no execute permission",
         failedToExecuteYtdlp: "Failed to execute yt-dlp",
         ytdlpExitedWithCode: "yt-dlp exited with code",
+        networkUnavailable: "Network unavailable \u2014 check your connection or proxy settings and retry",
         unknown: "Unknown"
       },
       progress: {
@@ -4284,6 +4287,7 @@ var require_zh_CN = __commonJS({
         ytdlpPermissionDenied: "yt-dlp \u6CA1\u6709\u6267\u884C\u6743\u9650",
         failedToExecuteYtdlp: "\u6267\u884C yt-dlp \u5931\u8D25",
         ytdlpExitedWithCode: "yt-dlp \u9000\u51FA\uFF0C\u4EE3\u7801",
+        networkUnavailable: "\u7F51\u7EDC\u4E0D\u53EF\u7528 \u2014\u2014 \u8BF7\u68C0\u67E5\u7F51\u7EDC\u8FDE\u63A5\u6216\u4EE3\u7406\u8BBE\u7F6E\u540E\u91CD\u8BD5",
         unknown: "\u672A\u77E5"
       },
       progress: {
@@ -4351,6 +4355,7 @@ var {
   getFfmpegSource,
   getFfmpegVersion
 } = require_binary();
+var { isNetworkError } = require_net_guard();
 var downloader = require_downloader();
 var eagleApi = require_eagle();
 var ui = require_ui();
@@ -4574,7 +4579,7 @@ async function executeDownload(item) {
     }
   } catch (error) {
     item.state = "error";
-    item.error = error.message || i18next2.t("download.failed");
+    item.error = isNetworkError(error) ? i18next2.t("error.networkUnavailable") : error.message || i18next2.t("download.failed");
     ui.updateQueueItem(item.id, item);
   } finally {
     activeCount--;
@@ -4705,7 +4710,8 @@ async function handleYtdlpAction(action) {
       refreshDepsGatingState();
     }, 1500);
   } catch (e) {
-    ui.updateYtdlpCard("error", { message: e.message, retryAction: action });
+    const message = isNetworkError(e) ? i18next2.t("error.networkUnavailable") : e.message;
+    ui.updateYtdlpCard("error", { message, retryAction: action });
   }
 }
 async function handleUpdateClick() {

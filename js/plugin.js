@@ -14,6 +14,7 @@ const {
   getFfmpegSource,
   getFfmpegVersion,
 } = require("./binary");
+const { isNetworkError } = require("./net-guard");
 const downloader = require("./downloader");
 const eagleApi = require("./eagle");
 const ui = require("./ui");
@@ -332,7 +333,7 @@ async function executeDownload(item) {
     }
   } catch (error) {
     item.state = "error";
-    item.error = error.message || i18next.t("download.failed");
+    item.error = isNetworkError(error) ? i18next.t("error.networkUnavailable") : (error.message || i18next.t("download.failed"));
     ui.updateQueueItem(item.id, item);
   } finally {
     activeCount--;
@@ -502,7 +503,8 @@ async function handleYtdlpAction(action) {
       refreshDepsGatingState();
     }, 1500);
   } catch (e) {
-    ui.updateYtdlpCard("error", { message: e.message, retryAction: action });
+    const message = isNetworkError(e) ? i18next.t("error.networkUnavailable") : e.message;
+    ui.updateYtdlpCard("error", { message, retryAction: action });
   }
 }
 

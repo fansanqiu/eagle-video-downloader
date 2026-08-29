@@ -250,7 +250,6 @@ function updateDepsBadge(hasNotice) {
  * 显示依赖管理页面
  * @param {Object} opts
  * @param {boolean} opts.gating - 是否为「门槛模式」（依赖未就绪，强制停留在此页，隐藏返回按钮）
- * @param {'auto'|'mirror'|'direct'} opts.sourcePref - 当前下载源偏好
  * @param {boolean} opts.autoAddSourcePref - 是否自动设置 Eagle 数据来源
  */
 function showDepsPage({ gating = false, cookieConsentPref = false, autoAddSourcePref = true } = {}) {
