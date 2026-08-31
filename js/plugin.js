@@ -41,6 +41,9 @@ async function importToEagle(videoPath, metadata, sourceUrl) {
 const COOKIE_CONSENT_KEY = "eagle-video-downloader.cookieConsent";
 // 自动设置 Eagle 数据来源 key
 const AUTO_ADD_SOURCE_KEY = "eagle-video-downloader.autoAddSource";
+// 清晰度与帧率偏好存储 key
+const MAX_RESOLUTION_KEY = "eagle-video-downloader.maxResolution";
+const MAX_FRAMERATE_KEY = "eagle-video-downloader.maxFramerate";
 
 /**
  * 获取用户是否授权使用浏览器 Cookie (默认 false)
@@ -71,6 +74,44 @@ function getAutoAddSourcePref() {
  */
 function setAutoAddSourcePref(value) {
   localStorage.setItem(AUTO_ADD_SOURCE_KEY, String(value));
+}
+
+/**
+ * 获取清晰度上限偏好 (默认 'auto')
+ */
+function getMaxResolutionPref() {
+  return localStorage.getItem(MAX_RESOLUTION_KEY) || "auto";
+}
+
+/**
+ * 保存清晰度上限偏好
+ */
+function setMaxResolutionPref(value) {
+  const val = value || "auto";
+  localStorage.setItem(MAX_RESOLUTION_KEY, val);
+  downloader.setQualityPrefs({
+    resolution: val,
+    framerate: getMaxFrameratePref(),
+  });
+}
+
+/**
+ * 获取帧率上限偏好 (默认 'auto')
+ */
+function getMaxFrameratePref() {
+  return localStorage.getItem(MAX_FRAMERATE_KEY) || "auto";
+}
+
+/**
+ * 保存帧率上限偏好
+ */
+function setMaxFrameratePref(value) {
+  const val = value || "auto";
+  localStorage.setItem(MAX_FRAMERATE_KEY, val);
+  downloader.setQualityPrefs({
+    resolution: getMaxResolutionPref(),
+    framerate: val,
+  });
 }
 
 // 下载队列
@@ -119,6 +160,10 @@ eagle.onPluginCreate(async (plugin) => {
   ui.updateTheme();
   setupEventListeners();
   downloader.setCookieConsent(getCookieConsentPref());
+  downloader.setQualityPrefs({
+    resolution: getMaxResolutionPref(),
+    framerate: getMaxFrameratePref(),
+  });
   await initializeBinaries();
 });
 
@@ -160,6 +205,22 @@ function setupEventListeners() {
   if (cookieToggle) {
     cookieToggle.addEventListener("change", (e) => {
       setCookieConsentPref(e.target.checked);
+    });
+  }
+
+  // 清晰度上限选择切换
+  const maxResSelect = document.getElementById("maxResolutionSelect");
+  if (maxResSelect) {
+    maxResSelect.addEventListener("change", (e) => {
+      setMaxResolutionPref(e.target.value);
+    });
+  }
+
+  // 帧率上限选择切换
+  const maxFpsSelect = document.getElementById("maxFramerateSelect");
+  if (maxFpsSelect) {
+    maxFpsSelect.addEventListener("change", (e) => {
+      setMaxFrameratePref(e.target.value);
     });
   }
 
@@ -237,6 +298,8 @@ async function initializeBinaries() {
     gating: true,
     cookieConsentPref: getCookieConsentPref(),
     autoAddSourcePref: getAutoAddSourcePref(),
+    maxResolutionPref: getMaxResolutionPref(),
+    maxFrameratePref: getMaxFrameratePref(),
   });
   ui.updateDepsBadge(true);
   loadDepsInfo();
@@ -411,6 +474,8 @@ function openDepsPage() {
     tab: "settings",
     cookieConsentPref: getCookieConsentPref(),
     autoAddSourcePref: getAutoAddSourcePref(),
+    maxResolutionPref: getMaxResolutionPref(),
+    maxFrameratePref: getMaxFrameratePref(),
   });
   loadDepsInfo();
 }

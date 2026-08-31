@@ -1,34 +1,48 @@
 # Changelog
 
-## 2.4.0
+## 3.0.0
 
-- 重构安全与隐私机制（符合 Eagle 商店审核要求）：
-  - 锁定二进制依赖版本（yt-dlp 2026.07.04），新增 SHA-256 摘要完整性校验，校验失败自动清除文件
-  - 移除所有第三方代理/镜像源（`gh-proxy.com`、`ghfast.top`），始终从官方受信任源下载
-  - 移除所有 TLS 证书验证跳过逻辑（`NODE_TLS_REJECT_UNAUTHORIZED=0` / `--no-check-certificate`），强制加密传输
-  - 新增浏览器 Cookie 显式 Opt-in 授权机制，默认禁用 Cookie 读取，并在设置中说明使用目的与平台
-  - 加强 URL 与网络边界校验：仅允许 HTTPS，严格阻断 `localhost`、回环、私有网段及链路本地 IP 地址，重定向二次校验
-  - 压缩包解压新增路径穿越（`..`）与符号链接（symlink）安全防护
-- 优化 Pinterest 视频与图片解析降级链：针对 Pinterest 转存视频（如 Instagram 帖子），自动前置提取嵌入的第三方平台源地址；针对纯图片 Pin 自动提取并下载高清原图，解决 `No video formats found` 报错
-- 优化信息提取与下载机制：在 `getVideoInfo` 阶段完成第三方目标地址与 `webpage_url` 的同步转换以及 Pin 类型判断，消除二次重复请求
-- 优化格式兼容策略：在视频下载阶段采用 `bestvideo+bestaudio/best/b` 通用兼容格式
-- 优化代理与网络请求：网页抓取优先接入 Chromium 浏览器网络栈（全局 `fetch`），自动复用 Eagle 的系统代理与 VPN 节点
-- 优化 Pinterest 子域名（如 uk.pinterest.com）重定向自动追踪与 Carousel 帖子的元数据提取
+- 全新 UI 规范与交互重构：
+  - 升级界面至 Figma 3.0.0 规范，重构主面板、下载队列卡片、底部输入栏与操作按钮
+  - 新增偏好设置与依赖管理分栏：支持配置清晰度上限、帧率上限、数据来源记录及 Cookie 授权
+  - 优化更新提示机制，由设置齿轮红点徽标统一接管版本更新提示
+- 新增平台支持与智能解析：
+  - 新增 Pinterest 图钉下载（视频与图片），自动提取第三方源链接（如 Instagram、YouTube、TikTok、Vimeo 等原始来源）并优先下载源视频，纯图片 Pin 自动获取高清原图
+  - 站点适配器模块化重构，提升解析效率与可维护性
+- 规范化元数据导入与来源记录：
+  - 明确导入 Eagle 时保存元数据（标题、平台标签、截取前 500 字符的简介摘要）
+  - 原始网页链接作为可选记录项，仅在用户开启“自动设置 Eagle 数据来源”偏好设置时写入
+- 全面加强安全与隐私合规（符合 Eagle 商店审核标准）：
+  - 明确依赖安装流程：缺少 yt-dlp 或 FFmpeg 时进入依赖管理页，由用户手动点击安装 yt-dlp（锁定版本 2026.08.19 并强制执行 SHA-256 完整性校验）；FFmpeg 依赖 Eagle 官方插件，未检测到时支持一键跳转应用商店
+  - 完善浏览器 Cookie 授权机制与隐私披露：作为选用功能默认关闭，需用户主动开启；开启后通过 yt-dlp 读取 Chrome 登录 Cookie，仅在请求受限内容及 Pinterest 提取的第三方来源时使用匹配 Cookie，全程不收集、不上传任何用户数据
+  - 移除所有第三方代理/镜像源与不安全 SSL 忽略逻辑，强制走官方受信任源与 HTTPS 安全连接
+  - 引入网络安全边界（net-guard），严格校验 URL 并阻断 localhost 及私有/保留 IP 地址
+- 优化网络连接与下载稳定性：
+  - 恢复系统默认网络代理行为，适配系统代理与 VPN 环境
+  - 优化 DNS 解析与多 CDN 节点自动回退，修复节点连接卡顿
+  - 完善网络异常分类与本地化错误文案
 
 ---
 
-- Comprehensive Security & Privacy Hardening (Eagle Store Review Compliance):
-  - Pinned binary dependencies (yt-dlp 2026.07.04) with SHA-256 integrity verification
-  - Removed all third-party executable mirror sources; downloads are restricted to official trusted origins
-  - Removed all TLS certificate verification bypass logic (`NODE_TLS_REJECT_UNAUTHORIZED=0` / `--no-check-certificate`), enforcing HTTPS connections
-  - Introduced explicit user Opt-in consent flow for browser cookie access, disabled by default
-  - Strict URL and network boundary validation: HTTPS-only, blocking `localhost`, loopback, and private IP ranges, with redirect re-validation
-  - Added path traversal and symbolic link protection during archive extraction
-- Improved Pinterest extraction fallback chain: pre-extracts third-party source URLs (e.g. Instagram) for embedded video pins, and automatically downloads high-resolution images for image-only pins, resolving `No video formats found` errors
-- Optimized metadata extraction and download flow: handles target source URLs and pin type classification during `getVideoInfo` to prevent redundant requests
-- Optimized video format matching strategy with fallback to `bestvideo+bestaudio/best/b`
-- Enhanced network proxy compatibility by utilizing global Chromium `fetch` stack for page fetching
-- Improved handling of Pinterest subdomains (e.g. uk.pinterest.com) and multi-media carousel pins
+- Redesigned UI & UX to 3.0.0 Specification:
+  - Upgraded UI to Figma 3.0.0 design system; refreshed main view, download queue cards, and bottom input bar
+  - Added dedicated tabs for Preferences and Dependency Management, supporting custom max resolution, max framerate, source URL recording, and cookie permissions
+  - Improved update notifications with non-intrusive badge indicator on the settings icon
+- New Platforms & Enhanced Extraction:
+  - Added Pinterest pin support (video & image), with automatic third-party source extraction (e.g. original Instagram, YouTube, TikTok, Vimeo sources) and high-resolution fallback for image pins
+  - Modularized site adapters for improved maintainability and extraction performance
+- Precise Metadata & Source URL Import:
+  - Accurately imports video title, platform extractor tags, and description summary (truncated to 500 characters) into Eagle
+  - Original webpage URL is saved to Eagle items only when the "Auto-set Eagle Data Source" preference is enabled by the user
+- Comprehensive Security, Privacy & Dependency Compliance (Eagle Store Review Standards):
+  - Transparent Dependency Flow: Missing dependencies open the Dependency Management tab; users manually install yt-dlp (pinned 2026.08.19 with mandatory SHA-256 verification); FFmpeg utilizes Eagle's official plugin with one-click store redirection when missing
+  - Explicit Browser Cookie Opt-in & Privacy Disclosure: Browser cookie access is strictly optional and disabled by default; when enabled, yt-dlp reads Chrome login cookies and applies matching cookies solely for target platform requests and third-party media extracted from Pinterest pins (e.g. Instagram, YouTube, TikTok, Vimeo). No cookie data is collected or uploaded to third parties
+  - Removed third-party mirror sources and insecure SSL bypasses, enforcing official trusted origins and HTTPS encryption
+  - Introduced network security boundary (net-guard) to validate URLs and block localhost and private/reserved IP addresses
+- Optimized Network & Download Stability:
+  - Restored system default network proxy behavior, compatible with system proxies and VPNs
+  - Improved DNS resolution with multi-CDN fallback to prevent connection stalls
+  - Enhanced network error classification and localized error messaging
 
 
 ## 2.3.0

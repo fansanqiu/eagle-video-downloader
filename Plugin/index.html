@@ -136,6 +136,7 @@
     #mainContainer {
       flex: 1;
       display: flex;
+      padding: 0 4px;
       flex-direction: column;
       min-height: 0;
       overflow: hidden;
@@ -143,8 +144,7 @@
 
     .main-content-card {
       background: var(--bg-panel);
-      border-radius: 14px;
-      margin: 0 8px;
+      border-radius: 8px;
       padding: 8px;
       flex: 1;
       min-height: 0;
@@ -179,7 +179,7 @@
     /* Download Item */
     .download-item {
       background: var(--bg-card);
-      border-radius: 10px;
+      border-radius: 6px;
       padding: 12px;
       flex-shrink: 0;
       display: flex;
@@ -258,7 +258,7 @@
 
     /* Bottom Input Bar */
     .bottom-bar {
-      padding: 8px;
+      padding: 12px 8px;
       display: flex;
       gap: 8px;
       align-items: center;
@@ -405,8 +405,8 @@
 
     .subpage-content-card {
       background: var(--bg-panel);
-      border-radius: 14px;
-      margin: 0 8px 8px;
+      border-radius: 8px;
+      margin: 0 4px 4px;
       flex: 1;
       min-height: 0;
       display: flex;
@@ -485,12 +485,11 @@
 
     #depsNotice {
       padding: 8px 12px;
-      font-size: 11px;
+      font-size: 12px;
       line-height: 1.4;
-      color: var(--fg2);
-      background: rgba(255, 255, 255, 0.04);
-      border-bottom: 1px solid var(--border-line);
+      color: var(--fg1);
       flex-shrink: 0;
+      margin: 4px 0;
     }
 
     .subpage-scroll-body {
@@ -519,11 +518,12 @@
     /* Settings Panel */
     .settings-card {
       background: var(--bg-card);
-      border-radius: 10px;
+      border-radius: 6px;
       padding: 0 12px;
       display: flex;
       flex-direction: column;
       flex-shrink: 0;
+      margin-bottom: 8px;
     }
 
     .setting-row {
@@ -570,6 +570,54 @@
       flex-shrink: 0;
     }
 
+    /* Select Dropdown */
+    .setting-select-wrap {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    .setting-select {
+      appearance: none;
+      -webkit-appearance: none;
+      -moz-appearance: none;
+      background: #555975;
+      color: #ffffff;
+      border: none;
+      border-radius: 4px;
+      padding: 4px 22px 4px 8px;
+      font-size: 12px;
+      line-height: 16px;
+      outline: none;
+      cursor: pointer;
+      font-family: inherit;
+      box-sizing: border-box;
+    }
+
+    .setting-select:hover {
+      background: #626787;
+    }
+
+    .setting-select-wrap::after {
+      content: "";
+      position: absolute;
+      right: 6px;
+      top: 50%;
+      transform: translateY(-50%);
+      pointer-events: none;
+      width: 12px;
+      height: 12px;
+      background: url("assets/icon_chevron_down.svg") no-repeat center;
+      background-size: 12px 12px;
+    }
+
+    .setting-select option {
+      background: #262733;
+      color: #ffffff;
+      padding: 6px 10px;
+    }
+
     .switch input {
       opacity: 0;
       width: 0;
@@ -611,7 +659,7 @@
     /* Dependencies Panel */
     .deps-card {
       background: var(--bg-card);
-      border-radius: 10px;
+      border-radius: 8px;
       padding: 0 12px;
       display: flex;
       flex-direction: column;
@@ -825,6 +873,39 @@
                     <input type="checkbox" id="cookieConsentToggle" />
                     <span class="slider"></span>
                   </label>
+                </div>
+              </div>
+
+              <div class="settings-card">
+                <div class="setting-row">
+                  <div class="setting-info">
+                    <span id="maxResolutionLabel" class="setting-title">Max Resolution</span>
+                    <span id="maxResolutionHint" class="setting-desc">Limit the maximum video resolution. If not available, automatically falls back to the highest available resolution.</span>
+                  </div>
+                  <div class="setting-select-wrap no-drag">
+                    <select id="maxResolutionSelect" class="setting-select no-drag">
+                      <option value="auto">Auto (Best)</option>
+                      <option value="2160">4K (2160p)</option>
+                      <option value="1440">2K (1440p)</option>
+                      <option value="1080">1080p</option>
+                      <option value="720">720p</option>
+                      <option value="480">480p</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="setting-row">
+                  <div class="setting-info">
+                    <span id="maxFramerateLabel" class="setting-title">Max Frame Rate</span>
+                    <span id="maxFramerateHint" class="setting-desc">Limit the maximum frame rate. If not available, automatically falls back to the highest available frame rate.</span>
+                  </div>
+                  <div class="setting-select-wrap no-drag">
+                    <select id="maxFramerateSelect" class="setting-select no-drag">
+                      <option value="auto">Auto (Best)</option>
+                      <option value="60">60 FPS</option>
+                      <option value="30">30 FPS</option>
+                    </select>
+                  </div>
                 </div>
               </div>
             </div>

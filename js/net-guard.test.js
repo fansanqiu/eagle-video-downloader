@@ -17,3 +17,28 @@ assert(isPrivateIp('fe80::1'),            'link-local IPv6');
 assert(isPrivateIp('fd00::1'),            'unique local IPv6');
 
 console.log('net-guard: all checks passed');
+
+// Test buildFormatSelector in downloader.js
+const { buildFormatSelector } = require('./downloader');
+assert.strictEqual(
+  buildFormatSelector('auto', 'auto'),
+  'bestvideo+bestaudio/best/b',
+  'auto auto'
+);
+assert.strictEqual(
+  buildFormatSelector('1080', 'auto'),
+  'bestvideo[height<=1080]+bestaudio/best[height<=1080]/bestvideo+bestaudio/best/b',
+  '1080 auto'
+);
+assert.strictEqual(
+  buildFormatSelector('auto', '30'),
+  'bestvideo[fps<=30]+bestaudio/best[fps<=30]/bestvideo+bestaudio/best/b',
+  'auto 30'
+);
+assert.strictEqual(
+  buildFormatSelector('1080', '60'),
+  'bestvideo[height<=1080][fps<=60]+bestaudio/best[height<=1080][fps<=60]/bestvideo[height<=1080]+bestaudio/best[height<=1080]/bestvideo[fps<=60]+bestaudio/best[fps<=60]/bestvideo+bestaudio/best/b',
+  '1080 60'
+);
+
+console.log('downloader: format selector checks passed');

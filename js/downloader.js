@@ -15,6 +15,8 @@ const siteAdapters = require("./sites");
 
 // Cookie 显式授权状态
 let cookieConsentGranted = false;
+let maxResolution = "auto";
+let maxFramerate = "auto";
 
 function setCookieConsent(granted) {
   cookieConsentGranted = Boolean(granted);
@@ -22,6 +24,37 @@ function setCookieConsent(granted) {
 
 function hasCookieConsent() {
   return cookieConsentGranted;
+}
+
+function setQualityPrefs({ resolution = "auto", framerate = "auto" } = {}) {
+  maxResolution = resolution || "auto";
+  maxFramerate = framerate || "auto";
+}
+
+/**
+ * 根据分辨率和帧率设置构建 yt-dlp -f 格式选择器（支持自动向下兜底）
+ */
+function buildFormatSelector(resolution, framerate) {
+  const heightFilter = resolution && resolution !== "auto" ? `[height<=${resolution}]` : "";
+  const fpsFilter = framerate && framerate !== "auto" ? `[fps<=${framerate}]` : "";
+
+  if (!heightFilter && !fpsFilter) {
+    return "bestvideo+bestaudio/best/b";
+  }
+
+  const parts = [];
+  if (heightFilter && fpsFilter) {
+    parts.push(`bestvideo${heightFilter}${fpsFilter}+bestaudio/best${heightFilter}${fpsFilter}`);
+  }
+  if (heightFilter) {
+    parts.push(`bestvideo${heightFilter}+bestaudio/best${heightFilter}`);
+  }
+  if (fpsFilter) {
+    parts.push(`bestvideo${fpsFilter}+bestaudio/best${fpsFilter}`);
+  }
+  parts.push("bestvideo+bestaudio/best/b");
+
+  return parts.join("/");
 }
 
 /**
@@ -363,12 +396,14 @@ async function downloadVideo(url, onProgress, onStatus, preloadedInfo = null) {
   targetUrl = siteAdapters.normalizeUrl(targetUrl);
   await validateUrl(targetUrl);
 
+  const formatSelector = buildFormatSelector(maxResolution, maxFramerate);
+
   const args = [
     targetUrl,
     "-o",
     outputTemplate,
     "-f",
-    "bestvideo+bestaudio/best/b",
+    formatSelector,
     "--merge-output-format",
     "mp4",
     "--no-warnings",
@@ -419,4 +454,6 @@ module.exports = {
   cleanup,
   setCookieConsent,
   hasCookieConsent,
+  setQualityPrefs,
+  buildFormatSelector,
 };

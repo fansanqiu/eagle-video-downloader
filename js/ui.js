@@ -122,14 +122,15 @@ function createQueueItemEl(item) {
   el.className = `download-item ${item.state}`;
   el.dataset.id = item.id;
 
+  const isError = item.state === "error";
   el.innerHTML = `
     <div class="item-title">${escapeHtml(item.title)}</div>
     <div class="item-progress-bar">
       <div class="item-progress-fill" style="width: ${item.progress}%"></div>
     </div>
-    <div class="item-footer">
+    <div class="item-footer ${isError ? "" : "hidden"}">
       <span class="item-meta">${escapeHtml(getMetaText(item))}</span>
-      <div class="item-actions ${item.state === "error" ? "" : "hidden"}">
+      <div class="item-actions">
         <button class="item-action-btn" data-action="retry" data-id="${item.id}">${i18next.t("queue.retry")}</button>
         <button class="item-action-btn" data-action="copyError" data-id="${item.id}" id="copy-error-btn-${item.id}">${i18next.t("queue.copyError")}</button>
         <button class="item-action-btn" data-action="copy" data-id="${item.id}" id="copy-btn-${item.id}">${i18next.t("queue.copyUrl")}</button>
@@ -155,11 +156,15 @@ function updateQueueItem(id, data) {
   const fill = el.querySelector(".item-progress-fill");
   if (fill) fill.style.width = `${data.progress}%`;
 
-  const meta = el.querySelector(".item-meta");
-  if (meta) meta.textContent = getMetaText(data);
-
-  const actions = el.querySelector(".item-actions");
-  if (actions) actions.classList.toggle("hidden", data.state !== "error");
+  const footer = el.querySelector(".item-footer");
+  const isError = data.state === "error";
+  if (footer) {
+    footer.classList.toggle("hidden", !isError);
+    if (isError) {
+      const meta = footer.querySelector(".item-meta");
+      if (meta) meta.textContent = getMetaText(data);
+    }
+  }
 }
 
 /**
@@ -185,25 +190,13 @@ function showCopiedErrorFeedback(id) {
 }
 
 /**
- * 根据状态生成元信息文本
+ * 根据状态生成元信息文本（仅 error 时使用）
  */
 function getMetaText(item) {
-  switch (item.state) {
-    case "waiting":
-      return i18next.t("queue.waiting");
-    case "preparing":
-      return i18next.t("queue.preparing");
-    case "downloading":
-      return item.speed
-        ? `${Math.round(item.progress)}% · ${item.speed}`
-        : `${Math.round(item.progress)}%`;
-    case "completed":
-      return i18next.t("queue.completed");
-    case "error":
-      return item.error || i18next.t("queue.error");
-    default:
-      return "";
+  if (item.state === "error") {
+    return item.error || i18next.t("queue.error");
   }
+  return "";
 }
 
 /**
@@ -268,7 +261,7 @@ function switchSubpageTab(tabName) {
  * @param {boolean} opts.cookieConsentPref - Cookie 授权状态
  * @param {boolean} opts.autoAddSourcePref - 是否自动设置 Eagle 数据来源
  */
-function showDepsPage({ tab = "settings", gating = false, cookieConsentPref = false, autoAddSourcePref = true } = {}) {
+function showDepsPage({ tab = "settings", gating = false, cookieConsentPref = false, autoAddSourcePref = true, maxResolutionPref = "auto", maxFrameratePref = "auto" } = {}) {
   // 填充静态文本
   const tabBtnSettings = document.getElementById("tabBtnSettings");
   const tabBtnDeps = document.getElementById("tabBtnDeps");
@@ -278,6 +271,12 @@ function showDepsPage({ tab = "settings", gating = false, cookieConsentPref = fa
   const cookieLabel = document.getElementById("cookieConsentLabel");
   const cookieHint = document.getElementById("cookieConsentHint");
   const cookieToggle = document.getElementById("cookieConsentToggle");
+  const maxResLabel = document.getElementById("maxResolutionLabel");
+  const maxResHint = document.getElementById("maxResolutionHint");
+  const maxResSelect = document.getElementById("maxResolutionSelect");
+  const maxFpsLabel = document.getElementById("maxFramerateLabel");
+  const maxFpsHint = document.getElementById("maxFramerateHint");
+  const maxFpsSelect = document.getElementById("maxFramerateSelect");
   const notice = document.getElementById("depsNotice");
   const ytdlpDesc = document.getElementById("ytdlpDesc");
   const ffmpegDesc = document.getElementById("ffmpegDesc");
@@ -290,6 +289,21 @@ function showDepsPage({ tab = "settings", gating = false, cookieConsentPref = fa
   if (cookieLabel) cookieLabel.textContent = i18next.t("deps.cookieConsentLabel");
   if (cookieHint) cookieHint.textContent = i18next.t("deps.cookieConsentHint");
   if (cookieToggle) cookieToggle.checked = cookieConsentPref;
+
+  if (maxResLabel) maxResLabel.textContent = i18next.t("deps.maxResolutionLabel");
+  if (maxResHint) maxResHint.textContent = i18next.t("deps.maxResolutionHint");
+  if (maxResSelect) {
+    if (maxResSelect.options[0]) maxResSelect.options[0].textContent = i18next.t("deps.resAuto");
+    maxResSelect.value = maxResolutionPref || "auto";
+  }
+
+  if (maxFpsLabel) maxFpsLabel.textContent = i18next.t("deps.maxFramerateLabel");
+  if (maxFpsHint) maxFpsHint.textContent = i18next.t("deps.maxFramerateHint");
+  if (maxFpsSelect) {
+    if (maxFpsSelect.options[0]) maxFpsSelect.options[0].textContent = i18next.t("deps.fpsAuto");
+    maxFpsSelect.value = maxFrameratePref || "auto";
+  }
+
   if (notice) notice.textContent = i18next.t("deps.setupRequired");
   if (ytdlpDesc) ytdlpDesc.textContent = i18next.t("deps.ytdlpDesc");
   if (ffmpegDesc) ffmpegDesc.textContent = i18next.t("deps.ffmpegDesc");
@@ -305,7 +319,7 @@ function showDepsPage({ tab = "settings", gating = false, cookieConsentPref = fa
  * 切换依赖页的「门槛模式」：隐藏/显示返回按钮，显示/隐藏强制安装提示
  */
 function setDepsGating(gating) {
-  document.getElementById("depsBackBtn")?.classList.toggle("hidden", gating);
+  document.querySelector(".subpage-header")?.classList.toggle("hidden", gating);
   document.getElementById("depsNotice")?.classList.toggle("hidden", !gating);
   if (gating) {
     switchSubpageTab("dependencies");

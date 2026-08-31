@@ -8,7 +8,7 @@
 
 ## 支持的平台
 
-YouTube、Twitter / X、TikTok、Bilibili、Instagram、Vimeo 以及[更多平台](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md)。
+YouTube、Twitter / X、TikTok、Bilibili、Instagram、Pinterest、Vimeo 以及[更多平台](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md)。
 
 ## 功能特性
 

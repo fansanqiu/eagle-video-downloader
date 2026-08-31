@@ -3297,11 +3297,36 @@ var require_downloader = __commonJS({
     var { validateUrl, secureHttpsGet } = require_net_guard();
     var siteAdapters = require_sites();
     var cookieConsentGranted = false;
+    var maxResolution = "auto";
+    var maxFramerate = "auto";
     function setCookieConsent(granted) {
       cookieConsentGranted = Boolean(granted);
     }
     function hasCookieConsent() {
       return cookieConsentGranted;
+    }
+    function setQualityPrefs({ resolution = "auto", framerate = "auto" } = {}) {
+      maxResolution = resolution || "auto";
+      maxFramerate = framerate || "auto";
+    }
+    function buildFormatSelector(resolution, framerate) {
+      const heightFilter = resolution && resolution !== "auto" ? `[height<=${resolution}]` : "";
+      const fpsFilter = framerate && framerate !== "auto" ? `[fps<=${framerate}]` : "";
+      if (!heightFilter && !fpsFilter) {
+        return "bestvideo+bestaudio/best/b";
+      }
+      const parts = [];
+      if (heightFilter && fpsFilter) {
+        parts.push(`bestvideo${heightFilter}${fpsFilter}+bestaudio/best${heightFilter}${fpsFilter}`);
+      }
+      if (heightFilter) {
+        parts.push(`bestvideo${heightFilter}+bestaudio/best${heightFilter}`);
+      }
+      if (fpsFilter) {
+        parts.push(`bestvideo${fpsFilter}+bestaudio/best${fpsFilter}`);
+      }
+      parts.push("bestvideo+bestaudio/best/b");
+      return parts.join("/");
     }
     function isCorruptedBinaryError(error) {
       return error.code === "EBADMACHO" || error.code === "ENOEXEC" || error.errno === -88;
@@ -3587,12 +3612,13 @@ var require_downloader = __commonJS({
       let targetUrl = videoInfo && typeof videoInfo.webpage_url === "string" && videoInfo.webpage_url.startsWith("https") ? videoInfo.webpage_url : url;
       targetUrl = siteAdapters.normalizeUrl(targetUrl);
       await validateUrl(targetUrl);
+      const formatSelector = buildFormatSelector(maxResolution, maxFramerate);
       const args = [
         targetUrl,
         "-o",
         outputTemplate,
         "-f",
-        "bestvideo+bestaudio/best/b",
+        formatSelector,
         "--merge-output-format",
         "mp4",
         "--no-warnings",
@@ -3630,7 +3656,9 @@ var require_downloader = __commonJS({
       getVideoInfo,
       cleanup,
       setCookieConsent,
-      hasCookieConsent
+      hasCookieConsent,
+      setQualityPrefs,
+      buildFormatSelector
     };
   }
 });
@@ -3725,14 +3753,15 @@ var require_ui = __commonJS({
       const el = document.createElement("div");
       el.className = `download-item ${item.state}`;
       el.dataset.id = item.id;
+      const isError = item.state === "error";
       el.innerHTML = `
     <div class="item-title">${escapeHtml(item.title)}</div>
     <div class="item-progress-bar">
       <div class="item-progress-fill" style="width: ${item.progress}%"></div>
     </div>
-    <div class="item-footer">
+    <div class="item-footer ${isError ? "" : "hidden"}">
       <span class="item-meta">${escapeHtml(getMetaText(item))}</span>
-      <div class="item-actions ${item.state === "error" ? "" : "hidden"}">
+      <div class="item-actions">
         <button class="item-action-btn" data-action="retry" data-id="${item.id}">${i18next.t("queue.retry")}</button>
         <button class="item-action-btn" data-action="copyError" data-id="${item.id}" id="copy-error-btn-${item.id}">${i18next.t("queue.copyError")}</button>
         <button class="item-action-btn" data-action="copy" data-id="${item.id}" id="copy-btn-${item.id}">${i18next.t("queue.copyUrl")}</button>
@@ -3752,12 +3781,16 @@ var require_ui = __commonJS({
       const fill = el.querySelector(".item-progress-fill");
       if (fill)
         fill.style.width = `${data.progress}%`;
-      const meta = el.querySelector(".item-meta");
-      if (meta)
-        meta.textContent = getMetaText(data);
-      const actions = el.querySelector(".item-actions");
-      if (actions)
-        actions.classList.toggle("hidden", data.state !== "error");
+      const footer = el.querySelector(".item-footer");
+      const isError = data.state === "error";
+      if (footer) {
+        footer.classList.toggle("hidden", !isError);
+        if (isError) {
+          const meta = footer.querySelector(".item-meta");
+          if (meta)
+            meta.textContent = getMetaText(data);
+        }
+      }
     }
     function showCopiedFeedback(id) {
       const btn = document.getElementById(`copy-btn-${id}`);
@@ -3780,20 +3813,10 @@ var require_ui = __commonJS({
       }, 1500);
     }
     function getMetaText(item) {
-      switch (item.state) {
-        case "waiting":
-          return i18next.t("queue.waiting");
-        case "preparing":
-          return i18next.t("queue.preparing");
-        case "downloading":
-          return item.speed ? `${Math.round(item.progress)}% \xB7 ${item.speed}` : `${Math.round(item.progress)}%`;
-        case "completed":
-          return i18next.t("queue.completed");
-        case "error":
-          return item.error || i18next.t("queue.error");
-        default:
-          return "";
+      if (item.state === "error") {
+        return item.error || i18next.t("queue.error");
       }
+      return "";
     }
     function escapeHtml(str) {
       return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -3830,7 +3853,7 @@ var require_ui = __commonJS({
         depsPanel == null ? void 0 : depsPanel.classList.remove("hidden");
       }
     }
-    function showDepsPage({ tab = "settings", gating = false, cookieConsentPref = false, autoAddSourcePref = true } = {}) {
+    function showDepsPage({ tab = "settings", gating = false, cookieConsentPref = false, autoAddSourcePref = true, maxResolutionPref = "auto", maxFrameratePref = "auto" } = {}) {
       var _a, _b;
       const tabBtnSettings = document.getElementById("tabBtnSettings");
       const tabBtnDeps = document.getElementById("tabBtnDeps");
@@ -3840,6 +3863,12 @@ var require_ui = __commonJS({
       const cookieLabel = document.getElementById("cookieConsentLabel");
       const cookieHint = document.getElementById("cookieConsentHint");
       const cookieToggle = document.getElementById("cookieConsentToggle");
+      const maxResLabel = document.getElementById("maxResolutionLabel");
+      const maxResHint = document.getElementById("maxResolutionHint");
+      const maxResSelect = document.getElementById("maxResolutionSelect");
+      const maxFpsLabel = document.getElementById("maxFramerateLabel");
+      const maxFpsHint = document.getElementById("maxFramerateHint");
+      const maxFpsSelect = document.getElementById("maxFramerateSelect");
       const notice = document.getElementById("depsNotice");
       const ytdlpDesc = document.getElementById("ytdlpDesc");
       const ffmpegDesc = document.getElementById("ffmpegDesc");
@@ -3859,6 +3888,24 @@ var require_ui = __commonJS({
         cookieHint.textContent = i18next.t("deps.cookieConsentHint");
       if (cookieToggle)
         cookieToggle.checked = cookieConsentPref;
+      if (maxResLabel)
+        maxResLabel.textContent = i18next.t("deps.maxResolutionLabel");
+      if (maxResHint)
+        maxResHint.textContent = i18next.t("deps.maxResolutionHint");
+      if (maxResSelect) {
+        if (maxResSelect.options[0])
+          maxResSelect.options[0].textContent = i18next.t("deps.resAuto");
+        maxResSelect.value = maxResolutionPref || "auto";
+      }
+      if (maxFpsLabel)
+        maxFpsLabel.textContent = i18next.t("deps.maxFramerateLabel");
+      if (maxFpsHint)
+        maxFpsHint.textContent = i18next.t("deps.maxFramerateHint");
+      if (maxFpsSelect) {
+        if (maxFpsSelect.options[0])
+          maxFpsSelect.options[0].textContent = i18next.t("deps.fpsAuto");
+        maxFpsSelect.value = maxFrameratePref || "auto";
+      }
       if (notice)
         notice.textContent = i18next.t("deps.setupRequired");
       if (ytdlpDesc)
@@ -3872,7 +3919,7 @@ var require_ui = __commonJS({
     }
     function setDepsGating(gating) {
       var _a, _b;
-      (_a = document.getElementById("depsBackBtn")) == null ? void 0 : _a.classList.toggle("hidden", gating);
+      (_a = document.querySelector(".subpage-header")) == null ? void 0 : _a.classList.toggle("hidden", gating);
       (_b = document.getElementById("depsNotice")) == null ? void 0 : _b.classList.toggle("hidden", !gating);
       if (gating) {
         switchSubpageTab("dependencies");
@@ -4128,6 +4175,12 @@ var require_en = __commonJS({
         autoAddSourceHint: "When enabled, original web URLs are automatically saved to Eagle items",
         cookieConsentLabel: "Allow browser cookie access",
         cookieConsentHint: "When enabled, downloading Pinterest and Instagram videos may read your Chrome login session. Cookies are only sent to the respective platform sites.",
+        maxResolutionLabel: "Max Resolution",
+        maxResolutionHint: "Limit the maximum video resolution. If not available, automatically falls back to the highest available resolution.",
+        maxFramerateLabel: "Max Frame Rate",
+        maxFramerateHint: "Limit the maximum frame rate. If not available, automatically falls back to the highest available frame rate.",
+        resAuto: "Auto (Best)",
+        fpsAuto: "Auto (Best)",
         setupRequired: "These components are required for first-time use. The main view will open automatically once setup is complete.",
         back: "Back",
         ytdlpDesc: "Video extraction & download engine",
@@ -4245,6 +4298,12 @@ var require_zh_CN = __commonJS({
         autoAddSourceHint: "\u5F00\u542F\u540E\uFF0C\u4E0B\u8F7D\u89C6\u9891\u65F6\u4F1A\u81EA\u52A8\u5728 Eagle \u4E2D\u8BB0\u5F55\u539F\u59CB\u7F51\u9875 URL",
         cookieConsentLabel: "\u5141\u8BB8\u4F7F\u7528\u6D4F\u89C8\u5668 Cookie",
         cookieConsentHint: "\u5F00\u542F\u540E\uFF0C\u4E0B\u8F7D Pinterest \u548C Instagram \u89C6\u9891\u65F6\u53EF\u80FD\u8BFB\u53D6 Chrome \u6D4F\u89C8\u5668\u7684\u767B\u5F55\u4FE1\u606F\u3002Cookie \u4EC5\u53D1\u9001\u81F3\u5BF9\u5E94\u5E73\u53F0\u7F51\u7AD9\u3002",
+        maxResolutionLabel: "\u6E05\u6670\u5EA6\u4E0A\u9650",
+        maxResolutionHint: "\u9650\u5236\u4E0B\u8F7D\u7684\u6700\u5927\u6E05\u6670\u5EA6\u3002\u82E5\u76EE\u6807\u89C6\u9891\u65E0\u5BF9\u5E94\u753B\u8D28\uFF0C\u5C06\u81EA\u52A8\u5411\u4E0B\u5339\u914D\u6700\u9AD8\u53EF\u7528\u6E05\u6670\u5EA6\u3002",
+        maxFramerateLabel: "\u5E27\u7387\u4E0A\u9650",
+        maxFramerateHint: "\u9650\u5236\u4E0B\u8F7D\u7684\u6700\u5927\u5E27\u7387\u3002\u82E5\u76EE\u6807\u89C6\u9891\u65E0\u5BF9\u5E94\u5E27\u7387\uFF0C\u5C06\u81EA\u52A8\u5411\u4E0B\u5339\u914D\u6700\u9AD8\u53EF\u7528\u5E27\u7387\u3002",
+        resAuto: "Auto (\u6700\u9AD8\u753B\u8D28)",
+        fpsAuto: "Auto (\u6700\u9AD8\u5E27\u7387)",
         setupRequired: "\u9996\u6B21\u4F7F\u7528\u9700\u8981\u5148\u5B89\u88C5\u4EE5\u4E0B\u7EC4\u4EF6\uFF0C\u5B89\u88C5\u5B8C\u6210\u540E\u5C06\u81EA\u52A8\u8FDB\u5165\u4E3B\u754C\u9762",
         back: "\u8FD4\u56DE",
         ytdlpDesc: "\u89C6\u9891\u89E3\u6790\u4E0E\u4E0B\u8F7D\u5F15\u64CE",
@@ -4314,6 +4373,8 @@ async function importToEagle(videoPath, metadata, sourceUrl) {
 }
 var COOKIE_CONSENT_KEY = "eagle-video-downloader.cookieConsent";
 var AUTO_ADD_SOURCE_KEY = "eagle-video-downloader.autoAddSource";
+var MAX_RESOLUTION_KEY = "eagle-video-downloader.maxResolution";
+var MAX_FRAMERATE_KEY = "eagle-video-downloader.maxFramerate";
 function getCookieConsentPref() {
   const val = localStorage.getItem(COOKIE_CONSENT_KEY);
   return val === "true";
@@ -4328,6 +4389,28 @@ function getAutoAddSourcePref() {
 }
 function setAutoAddSourcePref(value) {
   localStorage.setItem(AUTO_ADD_SOURCE_KEY, String(value));
+}
+function getMaxResolutionPref() {
+  return localStorage.getItem(MAX_RESOLUTION_KEY) || "auto";
+}
+function setMaxResolutionPref(value) {
+  const val = value || "auto";
+  localStorage.setItem(MAX_RESOLUTION_KEY, val);
+  downloader.setQualityPrefs({
+    resolution: val,
+    framerate: getMaxFrameratePref()
+  });
+}
+function getMaxFrameratePref() {
+  return localStorage.getItem(MAX_FRAMERATE_KEY) || "auto";
+}
+function setMaxFrameratePref(value) {
+  const val = value || "auto";
+  localStorage.setItem(MAX_FRAMERATE_KEY, val);
+  downloader.setQualityPrefs({
+    resolution: getMaxResolutionPref(),
+    framerate: val
+  });
 }
 var downloadQueue = [];
 var MAX_CONCURRENT = 3;
@@ -4360,6 +4443,10 @@ eagle.onPluginCreate(async (plugin) => {
   ui.updateTheme();
   setupEventListeners();
   downloader.setCookieConsent(getCookieConsentPref());
+  downloader.setQualityPrefs({
+    resolution: getMaxResolutionPref(),
+    framerate: getMaxFrameratePref()
+  });
   await initializeBinaries();
 });
 eagle.onThemeChanged(() => {
@@ -4388,6 +4475,18 @@ function setupEventListeners() {
   if (cookieToggle) {
     cookieToggle.addEventListener("change", (e) => {
       setCookieConsentPref(e.target.checked);
+    });
+  }
+  const maxResSelect = document.getElementById("maxResolutionSelect");
+  if (maxResSelect) {
+    maxResSelect.addEventListener("change", (e) => {
+      setMaxResolutionPref(e.target.value);
+    });
+  }
+  const maxFpsSelect = document.getElementById("maxFramerateSelect");
+  if (maxFpsSelect) {
+    maxFpsSelect.addEventListener("change", (e) => {
+      setMaxFrameratePref(e.target.value);
     });
   }
   document.getElementById("ytdlpActions").addEventListener("click", (e) => {
@@ -4449,7 +4548,9 @@ async function initializeBinaries() {
     tab: "dependencies",
     gating: true,
     cookieConsentPref: getCookieConsentPref(),
-    autoAddSourcePref: getAutoAddSourcePref()
+    autoAddSourcePref: getAutoAddSourcePref(),
+    maxResolutionPref: getMaxResolutionPref(),
+    maxFrameratePref: getMaxFrameratePref()
   });
   ui.updateDepsBadge(true);
   loadDepsInfo();
@@ -4579,7 +4680,9 @@ function openDepsPage() {
   ui.showDepsPage({
     tab: "settings",
     cookieConsentPref: getCookieConsentPref(),
-    autoAddSourcePref: getAutoAddSourcePref()
+    autoAddSourcePref: getAutoAddSourcePref(),
+    maxResolutionPref: getMaxResolutionPref(),
+    maxFrameratePref: getMaxFrameratePref()
   });
   loadDepsInfo();
 }
