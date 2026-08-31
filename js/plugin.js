@@ -137,10 +137,15 @@ function setupEventListeners() {
     window.close();
   });
 
-  document.getElementById("updateBannerBtn").addEventListener("click", handleUpdateClick);
-
   document.getElementById("depsEntryBtn").addEventListener("click", openDepsPage);
   document.getElementById("depsBackBtn").addEventListener("click", closeDepsPage);
+
+  document.getElementById("tabBtnSettings")?.addEventListener("click", () => {
+    ui.switchSubpageTab("settings");
+  });
+  document.getElementById("tabBtnDeps")?.addEventListener("click", () => {
+    ui.switchSubpageTab("dependencies");
+  });
 
   // 自动设置 Eagle 数据来源切换
   const autoAddToggle = document.getElementById("autoAddSourceToggle");
@@ -221,13 +226,14 @@ async function initializeBinaries() {
   if (depsReady()) {
     isInitialized = true;
     initializeMainUI();
-    // 后台检查 yt-dlp 是否有新版本，有则提示用户
+    // 后台检查 yt-dlp 是否有新版本，有则提示用户（齿轮红点）
     checkForUpdateAndNotify();
     return;
   }
 
   // 缺少必要依赖：进入依赖管理页门槛模式，装齐后自动进入主界面
   ui.showDepsPage({
+    tab: "dependencies",
     gating: true,
     cookieConsentPref: getCookieConsentPref(),
     autoAddSourcePref: getAutoAddSourcePref(),
@@ -386,27 +392,23 @@ async function copyError(id) {
 }
 
 /**
- * 后台检查 yt-dlp 版本，有新版本时显示更新横幅
+ * 后台检查 yt-dlp 版本，有新版本时更新齿轮红点提示
  */
 async function checkForUpdateAndNotify() {
   try {
-    const { hasUpdate, latestVersion } = await getYtDlpUpdateInfo();
-    if (hasUpdate) {
-      ui.showUpdateAvailable(latestVersion);
-      ui.updateDepsBadge(true);
-    } else {
-      ui.updateDepsBadge(!depsReady());
-    }
+    const { hasUpdate } = await getYtDlpUpdateInfo();
+    ui.updateDepsBadge(hasUpdate || !depsReady());
   } catch (e) {
     ui.updateDepsBadge(!depsReady());
   }
 }
 
 /**
- * 打开依赖管理页面并加载信息
+ * 打开设置与依赖管理页面并加载信息
  */
 function openDepsPage() {
   ui.showDepsPage({
+    tab: "settings",
     cookieConsentPref: getCookieConsentPref(),
     autoAddSourcePref: getAutoAddSourcePref(),
   });
@@ -427,10 +429,10 @@ function loadDepsInfo(options = {}) {
   const ffmpegSource = getFfmpegSource();
   const ytdlpInstalled = isYtDlpInstalled();
 
-  if (ffmpegSource === 'eagle') {
-    ui.updateFfmpegCard('eagle', {});
+  if (ffmpegSource === "eagle") {
+    ui.updateFfmpegCard("eagle", {});
   } else {
-    ui.updateFfmpegCard('missing', {});
+    ui.updateFfmpegCard("missing", {});
   }
 
   if (!ytdlpInstalled) {
@@ -469,7 +471,6 @@ async function handleYtdlpAction(action) {
   if (action === "uninstall") {
     uninstallYtDlp();
     ui.updateYtdlpCard("missing");
-    ui.hideUpdateBanner();
     refreshDepsGatingState();
     return;
   }
@@ -497,8 +498,6 @@ async function handleYtdlpAction(action) {
     const version = await getInstalledYtDlpVersion();
     ui.updateYtdlpCard("done", { statusText: i18next.t(doneKey), version });
 
-    if (action === "update") ui.hideUpdateBanner();
-
     setTimeout(() => {
       loadDepsInfo({ ytdlpKnownLatest: version });
       refreshDepsGatingState();
@@ -506,22 +505,6 @@ async function handleYtdlpAction(action) {
   } catch (e) {
     const message = isNetworkError(e) ? i18next.t("error.networkUnavailable") : e.message;
     ui.updateYtdlpCard("error", { message, retryAction: action });
-  }
-}
-
-/**
- * 处理用户点击「更新」按钮
- */
-async function handleUpdateClick() {
-  ui.setUpdateBannerUpdating(0);
-  try {
-    await downloadYtDlp((progress) => {
-      ui.setUpdateBannerUpdating(progress);
-    });
-    ui.setUpdateBannerDone();
-    setTimeout(() => ui.hideUpdateBanner(), 2000);
-  } catch (e) {
-    ui.hideUpdateBanner();
   }
 }
 

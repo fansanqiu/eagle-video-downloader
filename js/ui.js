@@ -219,20 +219,11 @@ function escapeHtml(str) {
 
 function getDepCardEls(prefix) {
   return {
-    statusEl:     document.getElementById(`${prefix}Status`),
+    statusEl:     document.getElementById(`${prefix}Badge`),
     detailEl:     document.getElementById(`${prefix}Detail`),
     progressWrap: document.getElementById(`${prefix}ProgressWrap`),
     progressFill: document.getElementById(`${prefix}ProgressFill`),
     actionsEl:    document.getElementById(`${prefix}Actions`),
-  };
-}
-
-function getUpdateBannerEls() {
-  return {
-    availableRow: document.getElementById("updateAvailableRow"),
-    progressRow:  document.getElementById("updateProgressRow"),
-    progressText: document.getElementById("updateProgressText"),
-    progressFill: document.getElementById("updateProgressFill"),
   };
 }
 
@@ -247,17 +238,40 @@ function updateDepsBadge(hasNotice) {
 }
 
 /**
- * 显示依赖管理页面
+ * 切换子页面分栏（Settings / Dependencies）
+ * @param {'settings' | 'dependencies'} tabName
+ */
+function switchSubpageTab(tabName) {
+  const tabBtnSettings = document.getElementById("tabBtnSettings");
+  const tabBtnDeps = document.getElementById("tabBtnDeps");
+  const settingsPanel = document.getElementById("settingsPanel");
+  const depsPanel = document.getElementById("depsPanel");
+
+  if (tabName === "settings") {
+    tabBtnSettings?.classList.add("active");
+    tabBtnDeps?.classList.remove("active");
+    settingsPanel?.classList.remove("hidden");
+    depsPanel?.classList.add("hidden");
+  } else {
+    tabBtnSettings?.classList.remove("active");
+    tabBtnDeps?.classList.add("active");
+    settingsPanel?.classList.add("hidden");
+    depsPanel?.classList.remove("hidden");
+  }
+}
+
+/**
+ * 显示偏好设置与依赖管理页面
  * @param {Object} opts
+ * @param {'settings' | 'dependencies'} opts.tab - 初始标签页
  * @param {boolean} opts.gating - 是否为「门槛模式」（依赖未就绪，强制停留在此页，隐藏返回按钮）
+ * @param {boolean} opts.cookieConsentPref - Cookie 授权状态
  * @param {boolean} opts.autoAddSourcePref - 是否自动设置 Eagle 数据来源
  */
-function showDepsPage({ gating = false, cookieConsentPref = false, autoAddSourcePref = true } = {}) {
+function showDepsPage({ tab = "settings", gating = false, cookieConsentPref = false, autoAddSourcePref = true } = {}) {
   // 填充静态文本
-  const backBtn = document.getElementById("depsBackBtn");
-  const subTitle = document.querySelector(".deps-subheader-title");
-  const sectionPrefTitle = document.getElementById("sectionPreferencesTitle");
-  const sectionEnginesTitle = document.getElementById("sectionEnginesTitle");
+  const tabBtnSettings = document.getElementById("tabBtnSettings");
+  const tabBtnDeps = document.getElementById("tabBtnDeps");
   const autoAddLabel = document.getElementById("autoAddSourceLabel");
   const autoAddHint = document.getElementById("autoAddSourceHint");
   const autoAddToggle = document.getElementById("autoAddSourceToggle");
@@ -268,10 +282,8 @@ function showDepsPage({ gating = false, cookieConsentPref = false, autoAddSource
   const ytdlpDesc = document.getElementById("ytdlpDesc");
   const ffmpegDesc = document.getElementById("ffmpegDesc");
 
-  if (backBtn) backBtn.textContent = i18next.t("deps.back");
-  if (subTitle) subTitle.textContent = i18next.t("deps.title");
-  if (sectionPrefTitle) sectionPrefTitle.textContent = i18next.t("deps.sectionPreferences");
-  if (sectionEnginesTitle) sectionEnginesTitle.textContent = i18next.t("deps.sectionEngines");
+  if (tabBtnSettings) tabBtnSettings.textContent = i18next.t("deps.tabSettings");
+  if (tabBtnDeps) tabBtnDeps.textContent = i18next.t("deps.tabDependencies");
   if (autoAddLabel) autoAddLabel.textContent = i18next.t("deps.autoAddSourceLabel");
   if (autoAddHint) autoAddHint.textContent = i18next.t("deps.autoAddSourceHint");
   if (autoAddToggle) autoAddToggle.checked = autoAddSourcePref;
@@ -282,9 +294,10 @@ function showDepsPage({ gating = false, cookieConsentPref = false, autoAddSource
   if (ytdlpDesc) ytdlpDesc.textContent = i18next.t("deps.ytdlpDesc");
   if (ffmpegDesc) ffmpegDesc.textContent = i18next.t("deps.ffmpegDesc");
 
+  switchSubpageTab(gating ? "dependencies" : tab);
+
   document.getElementById("depsContainer")?.classList.remove("hidden");
   document.getElementById("mainContainer")?.classList.add("hidden");
-  document.getElementById("depsEntryBtn")?.classList.add("hidden");
   setDepsGating(gating);
 }
 
@@ -294,6 +307,9 @@ function showDepsPage({ gating = false, cookieConsentPref = false, autoAddSource
 function setDepsGating(gating) {
   document.getElementById("depsBackBtn")?.classList.toggle("hidden", gating);
   document.getElementById("depsNotice")?.classList.toggle("hidden", !gating);
+  if (gating) {
+    switchSubpageTab("dependencies");
+  }
 }
 
 /**
@@ -303,20 +319,19 @@ function hideDepsPage() {
   setDepsGating(false);
   document.getElementById("depsContainer")?.classList.add("hidden");
   document.getElementById("mainContainer")?.classList.remove("hidden");
-  document.getElementById("depsEntryBtn")?.classList.remove("hidden");
 }
 
 /**
  * 更新 yt-dlp 卡片状态
- * state: 'checking' | 'latest' | 'outdated' | 'missing' | 'busy' | 'done'
- * data: { version, installedVersion, latestVersion, statusText, percent }
+ * state: 'checking' | 'latest' | 'outdated' | 'missing' | 'busy' | 'done' | 'installed' | 'error'
+ * data: { version, installedVersion, latestVersion, statusText, percent, message, retryAction }
  */
 function updateYtdlpCard(state, data = {}) {
-  const { statusEl, detailEl, progressWrap, progressFill, actionsEl } = getDepCardEls('ytdlp');
+  const { statusEl, detailEl, progressWrap, progressFill, actionsEl } = getDepCardEls("ytdlp");
 
   if (!statusEl) return;
 
-  statusEl.className = "dep-status";
+  statusEl.className = "dep-badge";
   progressWrap?.classList.add("hidden");
 
   switch (state) {
@@ -339,10 +354,12 @@ function updateYtdlpCard(state, data = {}) {
           : "";
         detailEl.textContent = [versionPart, checkingPart].filter(Boolean).join("  ·  ");
       }
-      if (actionsEl) actionsEl.innerHTML = `
-        <button class="dep-btn" data-ytdlp-action="reinstall">${i18next.t("deps.reinstall")}</button>
-        <button class="dep-btn danger" data-ytdlp-action="uninstall">${i18next.t("deps.uninstall")}</button>
-      `;
+      if (actionsEl) {
+        actionsEl.innerHTML = `
+          <button class="dep-btn" data-ytdlp-action="reinstall">${i18next.t("deps.reinstall")}</button>
+          <button class="dep-btn danger" data-ytdlp-action="uninstall">${i18next.t("deps.uninstall")}</button>
+        `;
+      }
       break;
     }
 
@@ -350,39 +367,47 @@ function updateYtdlpCard(state, data = {}) {
       statusEl.classList.add("ok");
       statusEl.textContent = i18next.t("deps.latest");
       if (detailEl) detailEl.textContent = i18next.t("deps.versionInstalled", { version: data.version });
-      if (actionsEl) actionsEl.innerHTML = `
-        <button class="dep-btn" data-ytdlp-action="reinstall">${i18next.t("deps.reinstall")}</button>
-        <button class="dep-btn danger" data-ytdlp-action="uninstall">${i18next.t("deps.uninstall")}</button>
-      `;
+      if (actionsEl) {
+        actionsEl.innerHTML = `
+          <button class="dep-btn" data-ytdlp-action="reinstall">${i18next.t("deps.reinstall")}</button>
+          <button class="dep-btn danger" data-ytdlp-action="uninstall">${i18next.t("deps.uninstall")}</button>
+        `;
+      }
       break;
 
     case "outdated":
       statusEl.classList.add("update");
       statusEl.textContent = i18next.t("deps.outdated");
       if (detailEl) detailEl.textContent = i18next.t("deps.versionUpdate", { from: data.installedVersion, to: data.latestVersion });
-      if (actionsEl) actionsEl.innerHTML = `
-        <button class="dep-btn primary" data-ytdlp-action="update">${i18next.t("deps.update")}</button>
-        <button class="dep-btn" data-ytdlp-action="reinstall">${i18next.t("deps.reinstall")}</button>
-        <button class="dep-btn danger" data-ytdlp-action="uninstall">${i18next.t("deps.uninstall")}</button>
-      `;
+      if (actionsEl) {
+        actionsEl.innerHTML = `
+          <button class="dep-btn primary" data-ytdlp-action="update">${i18next.t("deps.update")}</button>
+          <button class="dep-btn" data-ytdlp-action="reinstall">${i18next.t("deps.reinstall")}</button>
+          <button class="dep-btn danger" data-ytdlp-action="uninstall">${i18next.t("deps.uninstall")}</button>
+        `;
+      }
       break;
 
     case "missing":
       statusEl.classList.add("missing");
       statusEl.textContent = i18next.t("deps.missing");
       if (detailEl) detailEl.textContent = "";
-      if (actionsEl) actionsEl.innerHTML = `
-        <button class="dep-btn primary" data-ytdlp-action="install">${i18next.t("deps.install")}</button>
-      `;
+      if (actionsEl) {
+        actionsEl.innerHTML = `
+          <button class="dep-btn primary" data-ytdlp-action="install">${i18next.t("deps.install")}</button>
+        `;
+      }
       break;
 
     case "error":
       statusEl.classList.add("missing");
       statusEl.textContent = i18next.t("deps.downloadFailed");
       if (detailEl) detailEl.textContent = data.message || "";
-      if (actionsEl) actionsEl.innerHTML = `
-        <button class="dep-btn primary" data-ytdlp-action="${data.retryAction || 'install'}">${i18next.t("deps.retry")}</button>
-      `;
+      if (actionsEl) {
+        actionsEl.innerHTML = `
+          <button class="dep-btn primary" data-ytdlp-action="${data.retryAction || 'install'}">${i18next.t("deps.retry")}</button>
+        `;
+      }
       break;
 
     case "busy": {
@@ -400,10 +425,12 @@ function updateYtdlpCard(state, data = {}) {
       statusEl.classList.add("ok");
       statusEl.textContent = data.statusText || i18next.t("deps.doneInstalled");
       if (detailEl) detailEl.textContent = data.version ? i18next.t("deps.versionInstalled", { version: data.version }) : "";
-      if (actionsEl) actionsEl.innerHTML = `
-        <button class="dep-btn" data-ytdlp-action="reinstall">${i18next.t("deps.reinstall")}</button>
-        <button class="dep-btn danger" data-ytdlp-action="uninstall">${i18next.t("deps.uninstall")}</button>
-      `;
+      if (actionsEl) {
+        actionsEl.innerHTML = `
+          <button class="dep-btn" data-ytdlp-action="reinstall">${i18next.t("deps.reinstall")}</button>
+          <button class="dep-btn danger" data-ytdlp-action="uninstall">${i18next.t("deps.uninstall")}</button>
+        `;
+      }
       break;
   }
 }
@@ -414,11 +441,11 @@ function updateYtdlpCard(state, data = {}) {
  * data: { version }
  */
 function updateFfmpegCard(state, data = {}) {
-  const { statusEl, detailEl, progressWrap, actionsEl } = getDepCardEls('ffmpeg');
+  const { statusEl, detailEl, progressWrap, actionsEl } = getDepCardEls("ffmpeg");
 
   if (!statusEl) return;
 
-  statusEl.className = "dep-status";
+  statusEl.className = "dep-badge";
   progressWrap?.classList.add("hidden");
 
   switch (state) {
@@ -454,53 +481,6 @@ function updateFfmpegCard(state, data = {}) {
   }
 }
 
-/**
- * 显示更新横幅（可更新状态）
- */
-function showUpdateAvailable(latestVersion) {
-  const banner = document.getElementById("updateBanner");
-  const text = document.getElementById("updateBannerText");
-  const btn = document.getElementById("updateBannerBtn");
-  const availableRow = document.getElementById("updateAvailableRow");
-  const progressRow = document.getElementById("updateProgressRow");
-
-  if (!banner) return;
-  if (text) text.textContent = i18next.t("update.available", { version: latestVersion });
-  if (btn) btn.textContent = i18next.t("update.clickToUpdate");
-  availableRow?.classList.remove("hidden");
-  progressRow?.classList.add("hidden");
-  banner.classList.remove("hidden");
-}
-
-/**
- * 切换横幅为更新进度状态
- */
-function setUpdateBannerUpdating(percent) {
-  const { availableRow, progressRow, progressText, progressFill } = getUpdateBannerEls();
-  availableRow?.classList.add("hidden");
-  progressRow?.classList.remove("hidden");
-  if (progressText) progressText.textContent = i18next.t("update.updating", { percent: Math.round(percent) });
-  if (progressFill) progressFill.style.width = `${Math.round(percent)}%`;
-}
-
-/**
- * 切换横幅为完成状态
- */
-function setUpdateBannerDone() {
-  const { availableRow, progressRow, progressText, progressFill } = getUpdateBannerEls();
-  availableRow?.classList.add("hidden");
-  progressRow?.classList.remove("hidden");
-  if (progressText) progressText.textContent = i18next.t("update.done");
-  if (progressFill) progressFill.style.width = "100%";
-}
-
-/**
- * 隐藏更新横幅
- */
-function hideUpdateBanner() {
-  document.getElementById("updateBanner")?.classList.add("hidden");
-}
-
 module.exports = {
   updateTheme,
   showMainUI,
@@ -511,13 +491,10 @@ module.exports = {
   updateQueueItem,
   showCopiedFeedback,
   showCopiedErrorFeedback,
-  showUpdateAvailable,
-  setUpdateBannerUpdating,
-  setUpdateBannerDone,
-  hideUpdateBanner,
   showDepsPage,
   hideDepsPage,
   setDepsGating,
+  switchSubpageTab,
   updateDepsBadge,
   updateYtdlpCard,
   updateFfmpegCard,

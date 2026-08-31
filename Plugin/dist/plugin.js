@@ -3800,19 +3800,11 @@ var require_ui = __commonJS({
     }
     function getDepCardEls(prefix) {
       return {
-        statusEl: document.getElementById(`${prefix}Status`),
+        statusEl: document.getElementById(`${prefix}Badge`),
         detailEl: document.getElementById(`${prefix}Detail`),
         progressWrap: document.getElementById(`${prefix}ProgressWrap`),
         progressFill: document.getElementById(`${prefix}ProgressFill`),
         actionsEl: document.getElementById(`${prefix}Actions`)
-      };
-    }
-    function getUpdateBannerEls() {
-      return {
-        availableRow: document.getElementById("updateAvailableRow"),
-        progressRow: document.getElementById("updateProgressRow"),
-        progressText: document.getElementById("updateProgressText"),
-        progressFill: document.getElementById("updateProgressFill")
       };
     }
     function updateDepsBadge(hasNotice) {
@@ -3821,12 +3813,27 @@ var require_ui = __commonJS({
         return;
       badge.classList.toggle("hidden", !hasNotice);
     }
-    function showDepsPage({ gating = false, cookieConsentPref = false, autoAddSourcePref = true } = {}) {
-      var _a, _b, _c;
-      const backBtn = document.getElementById("depsBackBtn");
-      const subTitle = document.querySelector(".deps-subheader-title");
-      const sectionPrefTitle = document.getElementById("sectionPreferencesTitle");
-      const sectionEnginesTitle = document.getElementById("sectionEnginesTitle");
+    function switchSubpageTab(tabName) {
+      const tabBtnSettings = document.getElementById("tabBtnSettings");
+      const tabBtnDeps = document.getElementById("tabBtnDeps");
+      const settingsPanel = document.getElementById("settingsPanel");
+      const depsPanel = document.getElementById("depsPanel");
+      if (tabName === "settings") {
+        tabBtnSettings == null ? void 0 : tabBtnSettings.classList.add("active");
+        tabBtnDeps == null ? void 0 : tabBtnDeps.classList.remove("active");
+        settingsPanel == null ? void 0 : settingsPanel.classList.remove("hidden");
+        depsPanel == null ? void 0 : depsPanel.classList.add("hidden");
+      } else {
+        tabBtnSettings == null ? void 0 : tabBtnSettings.classList.remove("active");
+        tabBtnDeps == null ? void 0 : tabBtnDeps.classList.add("active");
+        settingsPanel == null ? void 0 : settingsPanel.classList.add("hidden");
+        depsPanel == null ? void 0 : depsPanel.classList.remove("hidden");
+      }
+    }
+    function showDepsPage({ tab = "settings", gating = false, cookieConsentPref = false, autoAddSourcePref = true } = {}) {
+      var _a, _b;
+      const tabBtnSettings = document.getElementById("tabBtnSettings");
+      const tabBtnDeps = document.getElementById("tabBtnDeps");
       const autoAddLabel = document.getElementById("autoAddSourceLabel");
       const autoAddHint = document.getElementById("autoAddSourceHint");
       const autoAddToggle = document.getElementById("autoAddSourceToggle");
@@ -3836,14 +3843,10 @@ var require_ui = __commonJS({
       const notice = document.getElementById("depsNotice");
       const ytdlpDesc = document.getElementById("ytdlpDesc");
       const ffmpegDesc = document.getElementById("ffmpegDesc");
-      if (backBtn)
-        backBtn.textContent = i18next.t("deps.back");
-      if (subTitle)
-        subTitle.textContent = i18next.t("deps.title");
-      if (sectionPrefTitle)
-        sectionPrefTitle.textContent = i18next.t("deps.sectionPreferences");
-      if (sectionEnginesTitle)
-        sectionEnginesTitle.textContent = i18next.t("deps.sectionEngines");
+      if (tabBtnSettings)
+        tabBtnSettings.textContent = i18next.t("deps.tabSettings");
+      if (tabBtnDeps)
+        tabBtnDeps.textContent = i18next.t("deps.tabDependencies");
       if (autoAddLabel)
         autoAddLabel.textContent = i18next.t("deps.autoAddSourceLabel");
       if (autoAddHint)
@@ -3862,28 +3865,30 @@ var require_ui = __commonJS({
         ytdlpDesc.textContent = i18next.t("deps.ytdlpDesc");
       if (ffmpegDesc)
         ffmpegDesc.textContent = i18next.t("deps.ffmpegDesc");
+      switchSubpageTab(gating ? "dependencies" : tab);
       (_a = document.getElementById("depsContainer")) == null ? void 0 : _a.classList.remove("hidden");
       (_b = document.getElementById("mainContainer")) == null ? void 0 : _b.classList.add("hidden");
-      (_c = document.getElementById("depsEntryBtn")) == null ? void 0 : _c.classList.add("hidden");
       setDepsGating(gating);
     }
     function setDepsGating(gating) {
       var _a, _b;
       (_a = document.getElementById("depsBackBtn")) == null ? void 0 : _a.classList.toggle("hidden", gating);
       (_b = document.getElementById("depsNotice")) == null ? void 0 : _b.classList.toggle("hidden", !gating);
+      if (gating) {
+        switchSubpageTab("dependencies");
+      }
     }
     function hideDepsPage() {
-      var _a, _b, _c;
+      var _a, _b;
       setDepsGating(false);
       (_a = document.getElementById("depsContainer")) == null ? void 0 : _a.classList.add("hidden");
       (_b = document.getElementById("mainContainer")) == null ? void 0 : _b.classList.remove("hidden");
-      (_c = document.getElementById("depsEntryBtn")) == null ? void 0 : _c.classList.remove("hidden");
     }
     function updateYtdlpCard(state, data = {}) {
       const { statusEl, detailEl, progressWrap, progressFill, actionsEl } = getDepCardEls("ytdlp");
       if (!statusEl)
         return;
-      statusEl.className = "dep-status";
+      statusEl.className = "dep-badge";
       progressWrap == null ? void 0 : progressWrap.classList.add("hidden");
       switch (state) {
         case "checking":
@@ -3902,11 +3907,12 @@ var require_ui = __commonJS({
             const checkingPart = data.checkingUpdate ? i18next.t("deps.checkingUpdate") : "";
             detailEl.textContent = [versionPart, checkingPart].filter(Boolean).join("  \xB7  ");
           }
-          if (actionsEl)
+          if (actionsEl) {
             actionsEl.innerHTML = `
-        <button class="dep-btn" data-ytdlp-action="reinstall">${i18next.t("deps.reinstall")}</button>
-        <button class="dep-btn danger" data-ytdlp-action="uninstall">${i18next.t("deps.uninstall")}</button>
-      `;
+          <button class="dep-btn" data-ytdlp-action="reinstall">${i18next.t("deps.reinstall")}</button>
+          <button class="dep-btn danger" data-ytdlp-action="uninstall">${i18next.t("deps.uninstall")}</button>
+        `;
+          }
           break;
         }
         case "latest":
@@ -3914,43 +3920,47 @@ var require_ui = __commonJS({
           statusEl.textContent = i18next.t("deps.latest");
           if (detailEl)
             detailEl.textContent = i18next.t("deps.versionInstalled", { version: data.version });
-          if (actionsEl)
+          if (actionsEl) {
             actionsEl.innerHTML = `
-        <button class="dep-btn" data-ytdlp-action="reinstall">${i18next.t("deps.reinstall")}</button>
-        <button class="dep-btn danger" data-ytdlp-action="uninstall">${i18next.t("deps.uninstall")}</button>
-      `;
+          <button class="dep-btn" data-ytdlp-action="reinstall">${i18next.t("deps.reinstall")}</button>
+          <button class="dep-btn danger" data-ytdlp-action="uninstall">${i18next.t("deps.uninstall")}</button>
+        `;
+          }
           break;
         case "outdated":
           statusEl.classList.add("update");
           statusEl.textContent = i18next.t("deps.outdated");
           if (detailEl)
             detailEl.textContent = i18next.t("deps.versionUpdate", { from: data.installedVersion, to: data.latestVersion });
-          if (actionsEl)
+          if (actionsEl) {
             actionsEl.innerHTML = `
-        <button class="dep-btn primary" data-ytdlp-action="update">${i18next.t("deps.update")}</button>
-        <button class="dep-btn" data-ytdlp-action="reinstall">${i18next.t("deps.reinstall")}</button>
-        <button class="dep-btn danger" data-ytdlp-action="uninstall">${i18next.t("deps.uninstall")}</button>
-      `;
+          <button class="dep-btn primary" data-ytdlp-action="update">${i18next.t("deps.update")}</button>
+          <button class="dep-btn" data-ytdlp-action="reinstall">${i18next.t("deps.reinstall")}</button>
+          <button class="dep-btn danger" data-ytdlp-action="uninstall">${i18next.t("deps.uninstall")}</button>
+        `;
+          }
           break;
         case "missing":
           statusEl.classList.add("missing");
           statusEl.textContent = i18next.t("deps.missing");
           if (detailEl)
             detailEl.textContent = "";
-          if (actionsEl)
+          if (actionsEl) {
             actionsEl.innerHTML = `
-        <button class="dep-btn primary" data-ytdlp-action="install">${i18next.t("deps.install")}</button>
-      `;
+          <button class="dep-btn primary" data-ytdlp-action="install">${i18next.t("deps.install")}</button>
+        `;
+          }
           break;
         case "error":
           statusEl.classList.add("missing");
           statusEl.textContent = i18next.t("deps.downloadFailed");
           if (detailEl)
             detailEl.textContent = data.message || "";
-          if (actionsEl)
+          if (actionsEl) {
             actionsEl.innerHTML = `
-        <button class="dep-btn primary" data-ytdlp-action="${data.retryAction || "install"}">${i18next.t("deps.retry")}</button>
-      `;
+          <button class="dep-btn primary" data-ytdlp-action="${data.retryAction || "install"}">${i18next.t("deps.retry")}</button>
+        `;
+          }
           break;
         case "busy": {
           statusEl.classList.add("busy");
@@ -3970,11 +3980,12 @@ var require_ui = __commonJS({
           statusEl.textContent = data.statusText || i18next.t("deps.doneInstalled");
           if (detailEl)
             detailEl.textContent = data.version ? i18next.t("deps.versionInstalled", { version: data.version }) : "";
-          if (actionsEl)
+          if (actionsEl) {
             actionsEl.innerHTML = `
-        <button class="dep-btn" data-ytdlp-action="reinstall">${i18next.t("deps.reinstall")}</button>
-        <button class="dep-btn danger" data-ytdlp-action="uninstall">${i18next.t("deps.uninstall")}</button>
-      `;
+          <button class="dep-btn" data-ytdlp-action="reinstall">${i18next.t("deps.reinstall")}</button>
+          <button class="dep-btn danger" data-ytdlp-action="uninstall">${i18next.t("deps.uninstall")}</button>
+        `;
+          }
           break;
       }
     }
@@ -3982,7 +3993,7 @@ var require_ui = __commonJS({
       const { statusEl, detailEl, progressWrap, actionsEl } = getDepCardEls("ffmpeg");
       if (!statusEl)
         return;
-      statusEl.className = "dep-status";
+      statusEl.className = "dep-badge";
       progressWrap == null ? void 0 : progressWrap.classList.add("hidden");
       switch (state) {
         case "checking":
@@ -4015,44 +4026,6 @@ var require_ui = __commonJS({
           break;
       }
     }
-    function showUpdateAvailable(latestVersion) {
-      const banner = document.getElementById("updateBanner");
-      const text = document.getElementById("updateBannerText");
-      const btn = document.getElementById("updateBannerBtn");
-      const availableRow = document.getElementById("updateAvailableRow");
-      const progressRow = document.getElementById("updateProgressRow");
-      if (!banner)
-        return;
-      if (text)
-        text.textContent = i18next.t("update.available", { version: latestVersion });
-      if (btn)
-        btn.textContent = i18next.t("update.clickToUpdate");
-      availableRow == null ? void 0 : availableRow.classList.remove("hidden");
-      progressRow == null ? void 0 : progressRow.classList.add("hidden");
-      banner.classList.remove("hidden");
-    }
-    function setUpdateBannerUpdating(percent) {
-      const { availableRow, progressRow, progressText, progressFill } = getUpdateBannerEls();
-      availableRow == null ? void 0 : availableRow.classList.add("hidden");
-      progressRow == null ? void 0 : progressRow.classList.remove("hidden");
-      if (progressText)
-        progressText.textContent = i18next.t("update.updating", { percent: Math.round(percent) });
-      if (progressFill)
-        progressFill.style.width = `${Math.round(percent)}%`;
-    }
-    function setUpdateBannerDone() {
-      const { availableRow, progressRow, progressText, progressFill } = getUpdateBannerEls();
-      availableRow == null ? void 0 : availableRow.classList.add("hidden");
-      progressRow == null ? void 0 : progressRow.classList.remove("hidden");
-      if (progressText)
-        progressText.textContent = i18next.t("update.done");
-      if (progressFill)
-        progressFill.style.width = "100%";
-    }
-    function hideUpdateBanner() {
-      var _a;
-      (_a = document.getElementById("updateBanner")) == null ? void 0 : _a.classList.add("hidden");
-    }
     module2.exports = {
       updateTheme,
       showMainUI,
@@ -4063,13 +4036,10 @@ var require_ui = __commonJS({
       updateQueueItem,
       showCopiedFeedback,
       showCopiedErrorFeedback,
-      showUpdateAvailable,
-      setUpdateBannerUpdating,
-      setUpdateBannerDone,
-      hideUpdateBanner,
       showDepsPage,
       hideDepsPage,
       setDepsGating,
+      switchSubpageTab,
       updateDepsBadge,
       updateYtdlpCard,
       updateFfmpegCard
@@ -4150,6 +4120,8 @@ var require_en = __commonJS({
       },
       deps: {
         title: "Settings & Dependencies",
+        tabSettings: "Settings",
+        tabDependencies: "Dependencies",
         sectionPreferences: "Preferences",
         sectionEngines: "Core Engines",
         autoAddSourceLabel: "Auto-set Eagle Data Source",
@@ -4157,35 +4129,35 @@ var require_en = __commonJS({
         cookieConsentLabel: "Allow browser cookie access",
         cookieConsentHint: "When enabled, downloading Pinterest and Instagram videos may read your Chrome login session. Cookies are only sent to the respective platform sites.",
         setupRequired: "These components are required for first-time use. The main view will open automatically once setup is complete.",
-        back: "\u2190 Back",
+        back: "Back",
         ytdlpDesc: "Video extraction & download engine",
         ffmpegDesc: "Video merging & transcoding engine",
         ffmpegManaged: "Managed by Eagle, no action needed",
         ffmpegNotFoundHint: "Eagle built-in FFmpeg plugin not found. Please click the button below to install it.",
         ffmpegUnsupported: "Eagle official FFmpeg plugin is required for audio/video merging",
         installFfmpegDep: "Install FFmpeg Dependency",
-        checking: "\u25CC Checking...",
-        installed: "\u2713 Installed",
+        checking: "Checking...",
+        installed: "Installed",
         checkingUpdate: "Checking for updates...",
-        latest: "\u2713 Up to date",
-        outdated: "\u2191 Update available",
-        missing: "\u2717 Not installed",
-        eagleBuiltin: "\u2713 Eagle built-in",
-        notFound: "\u2717 Not found",
-        installing: "\u27F3 Installing...",
-        updating: "\u27F3 Updating...",
-        reinstalling: "\u27F3 Reinstalling...",
-        doneInstalled: "\u2713 Installed",
-        doneUpdated: "\u2713 Updated",
-        doneReinstalled: "\u2713 Reinstalled",
+        latest: "Up to date",
+        outdated: "Update",
+        missing: "Not installed",
+        eagleBuiltin: "Eagle built-in",
+        notFound: "Not found",
+        installing: "Installing...",
+        updating: "Updating...",
+        reinstalling: "Reinstalling...",
+        doneInstalled: "Installed",
+        doneUpdated: "Updated",
+        doneReinstalled: "Reinstalled",
         install: "Install",
         update: "Update",
         reinstall: "Reinstall",
         uninstall: "Uninstall",
         retry: "Retry",
-        downloadFailed: "\u2717 Download failed",
+        downloadFailed: "Download failed",
         versionInstalled: "Version: {{version}}",
-        versionUpdate: "{{from}}  \u2192  {{to}}",
+        versionUpdate: "{{from}} \u2192 {{to}}",
         progressText: "Downloading... {{percent}}%"
       }
     };
@@ -4265,6 +4237,8 @@ var require_zh_CN = __commonJS({
       },
       deps: {
         title: "\u8BBE\u7F6E\u4E0E\u4F9D\u8D56\u7BA1\u7406",
+        tabSettings: "\u504F\u597D\u8BBE\u7F6E",
+        tabDependencies: "\u4F9D\u8D56\u7BA1\u7406",
         sectionPreferences: "\u504F\u597D\u8BBE\u7F6E",
         sectionEngines: "\u6838\u5FC3\u5F15\u64CE\u4F9D\u8D56",
         autoAddSourceLabel: "\u81EA\u52A8\u8BBE\u7F6E Eagle \u6570\u636E\u6765\u6E90",
@@ -4272,35 +4246,35 @@ var require_zh_CN = __commonJS({
         cookieConsentLabel: "\u5141\u8BB8\u4F7F\u7528\u6D4F\u89C8\u5668 Cookie",
         cookieConsentHint: "\u5F00\u542F\u540E\uFF0C\u4E0B\u8F7D Pinterest \u548C Instagram \u89C6\u9891\u65F6\u53EF\u80FD\u8BFB\u53D6 Chrome \u6D4F\u89C8\u5668\u7684\u767B\u5F55\u4FE1\u606F\u3002Cookie \u4EC5\u53D1\u9001\u81F3\u5BF9\u5E94\u5E73\u53F0\u7F51\u7AD9\u3002",
         setupRequired: "\u9996\u6B21\u4F7F\u7528\u9700\u8981\u5148\u5B89\u88C5\u4EE5\u4E0B\u7EC4\u4EF6\uFF0C\u5B89\u88C5\u5B8C\u6210\u540E\u5C06\u81EA\u52A8\u8FDB\u5165\u4E3B\u754C\u9762",
-        back: "\u2190 \u8FD4\u56DE",
+        back: "\u8FD4\u56DE",
         ytdlpDesc: "\u89C6\u9891\u89E3\u6790\u4E0E\u4E0B\u8F7D\u5F15\u64CE",
         ffmpegDesc: "\u89C6\u9891\u5408\u5E76\u4E0E\u8F6C\u7801\u5F15\u64CE",
         ffmpegManaged: "\u7531 Eagle \u7BA1\u7406\uFF0C\u65E0\u9700\u624B\u52A8\u64CD\u4F5C",
         ffmpegNotFoundHint: "\u672A\u68C0\u6D4B\u5230 Eagle \u5185\u7F6E FFmpeg \u63D2\u4EF6\uFF0C\u8BF7\u70B9\u51FB\u4E0B\u65B9\u6309\u94AE\u5B89\u88C5",
         ffmpegUnsupported: "\u9700\u5B89\u88C5 Eagle \u5B98\u65B9 FFmpeg \u63D2\u4EF6\u4EE5\u652F\u6301\u97F3\u89C6\u9891\u5408\u5E76",
         installFfmpegDep: "\u5B89\u88C5 FFmpeg \u4F9D\u8D56",
-        checking: "\u25CC \u68C0\u67E5\u4E2D...",
-        installed: "\u2713 \u5DF2\u5B89\u88C5",
+        checking: "\u68C0\u67E5\u4E2D...",
+        installed: "\u5DF2\u5B89\u88C5",
         checkingUpdate: "\u68C0\u67E5\u66F4\u65B0\u4E2D...",
-        latest: "\u2713 \u5DF2\u662F\u6700\u65B0\u7248",
-        outdated: "\u2191 \u6709\u65B0\u7248\u672C",
-        missing: "\u2717 \u672A\u5B89\u88C5",
-        eagleBuiltin: "\u2713 Eagle \u5185\u7F6E",
-        notFound: "\u2717 \u672A\u627E\u5230",
-        installing: "\u27F3 \u5B89\u88C5\u4E2D...",
-        updating: "\u27F3 \u66F4\u65B0\u4E2D...",
-        reinstalling: "\u27F3 \u91CD\u88C5\u4E2D...",
-        doneInstalled: "\u2713 \u5B89\u88C5\u5B8C\u6210",
-        doneUpdated: "\u2713 \u66F4\u65B0\u5B8C\u6210",
-        doneReinstalled: "\u2713 \u91CD\u88C5\u5B8C\u6210",
+        latest: "\u5DF2\u662F\u6700\u65B0\u7248",
+        outdated: "\u6709\u65B0\u7248\u672C",
+        missing: "\u672A\u5B89\u88C5",
+        eagleBuiltin: "Eagle \u5185\u7F6E",
+        notFound: "\u672A\u627E\u5230",
+        installing: "\u5B89\u88C5\u4E2D...",
+        updating: "\u66F4\u65B0\u4E2D...",
+        reinstalling: "\u91CD\u88C5\u4E2D...",
+        doneInstalled: "\u5B89\u88C5\u5B8C\u6210",
+        doneUpdated: "\u66F4\u65B0\u5B8C\u6210",
+        doneReinstalled: "\u91CD\u88C5\u5B8C\u6210",
         install: "\u5B89\u88C5",
         update: "\u66F4\u65B0",
-        reinstall: "\u91CD\u88C5",
+        reinstall: "\u91CD\u65B0\u5B89\u88C5",
         uninstall: "\u5378\u8F7D",
         retry: "\u91CD\u8BD5",
-        downloadFailed: "\u2717 \u4E0B\u8F7D\u5931\u8D25",
+        downloadFailed: "\u4E0B\u8F7D\u5931\u8D25",
         versionInstalled: "\u7248\u672C\uFF1A{{version}}",
-        versionUpdate: "{{from}}  \u2192  {{to}}",
+        versionUpdate: "{{from}} \u2192 {{to}}",
         progressText: "\u6B63\u5728\u4E0B\u8F7D... {{percent}}%"
       }
     };
@@ -4392,12 +4366,18 @@ eagle.onThemeChanged(() => {
   ui.updateTheme();
 });
 function setupEventListeners() {
+  var _a, _b;
   document.getElementById("closeButton").addEventListener("click", () => {
     window.close();
   });
-  document.getElementById("updateBannerBtn").addEventListener("click", handleUpdateClick);
   document.getElementById("depsEntryBtn").addEventListener("click", openDepsPage);
   document.getElementById("depsBackBtn").addEventListener("click", closeDepsPage);
+  (_a = document.getElementById("tabBtnSettings")) == null ? void 0 : _a.addEventListener("click", () => {
+    ui.switchSubpageTab("settings");
+  });
+  (_b = document.getElementById("tabBtnDeps")) == null ? void 0 : _b.addEventListener("click", () => {
+    ui.switchSubpageTab("dependencies");
+  });
   const autoAddToggle = document.getElementById("autoAddSourceToggle");
   if (autoAddToggle) {
     autoAddToggle.addEventListener("change", (e) => {
@@ -4466,6 +4446,7 @@ async function initializeBinaries() {
     return;
   }
   ui.showDepsPage({
+    tab: "dependencies",
     gating: true,
     cookieConsentPref: getCookieConsentPref(),
     autoAddSourcePref: getAutoAddSourcePref()
@@ -4588,19 +4569,15 @@ async function copyError(id) {
 }
 async function checkForUpdateAndNotify() {
   try {
-    const { hasUpdate, latestVersion } = await getYtDlpUpdateInfo();
-    if (hasUpdate) {
-      ui.showUpdateAvailable(latestVersion);
-      ui.updateDepsBadge(true);
-    } else {
-      ui.updateDepsBadge(!depsReady());
-    }
+    const { hasUpdate } = await getYtDlpUpdateInfo();
+    ui.updateDepsBadge(hasUpdate || !depsReady());
   } catch (e) {
     ui.updateDepsBadge(!depsReady());
   }
 }
 function openDepsPage() {
   ui.showDepsPage({
+    tab: "settings",
     cookieConsentPref: getCookieConsentPref(),
     autoAddSourcePref: getAutoAddSourcePref()
   });
@@ -4647,7 +4624,6 @@ async function handleYtdlpAction(action) {
   if (action === "uninstall") {
     uninstallYtDlp();
     ui.updateYtdlpCard("missing");
-    ui.hideUpdateBanner();
     refreshDepsGatingState();
     return;
   }
@@ -4669,8 +4645,6 @@ async function handleYtdlpAction(action) {
     });
     const version = await getInstalledYtDlpVersion();
     ui.updateYtdlpCard("done", { statusText: i18next2.t(doneKey), version });
-    if (action === "update")
-      ui.hideUpdateBanner();
     setTimeout(() => {
       loadDepsInfo({ ytdlpKnownLatest: version });
       refreshDepsGatingState();
@@ -4678,18 +4652,6 @@ async function handleYtdlpAction(action) {
   } catch (e) {
     const message = isNetworkError(e) ? i18next2.t("error.networkUnavailable") : e.message;
     ui.updateYtdlpCard("error", { message, retryAction: action });
-  }
-}
-async function handleUpdateClick() {
-  ui.setUpdateBannerUpdating(0);
-  try {
-    await downloadYtDlp((progress) => {
-      ui.setUpdateBannerUpdating(progress);
-    });
-    ui.setUpdateBannerDone();
-    setTimeout(() => ui.hideUpdateBanner(), 2e3);
-  } catch (e) {
-    ui.hideUpdateBanner();
   }
 }
 async function copyUrl(id) {
