@@ -38,6 +38,10 @@ npm run package   # 打包为 视频下载器.eagleplugin（构建 + 清理 bin/
 
 下载流程：用户输入 URL → `getVideoInfo()`（yt-dlp --dump-json）→ `downloadVideo()`（yt-dlp 子进程，临时目录）→ `importToEagle()` → 清理临时文件。
 
+## 文档写作规范
+
+文档（CHANGELOG、README 等）中禁止使用多级无序列表。有层级关系时：第一级用普通文本（不加 `-`），第二级用无序列表。
+
 ## 国际化
 
 语言文件在 `Plugin/_locales/en.json` 和 `zh_CN.json`，使用 i18next。新增用户可见字符串时需同时更新两个文件。

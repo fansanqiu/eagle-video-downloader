@@ -2,47 +2,63 @@
 
 ## 3.0.0
 
-- 全新 UI 规范与交互重构：
-  - 升级界面至 Figma 3.0.0 规范，重构主面板、下载队列卡片、底部输入栏与操作按钮
-  - 新增偏好设置与依赖管理分栏：支持配置清晰度上限、帧率上限、数据来源记录及 Cookie 授权
-  - 优化更新提示机制，由设置齿轮红点徽标统一接管版本更新提示
-- 新增平台支持与智能解析：
-  - 新增 Pinterest 图钉下载（视频与图片），自动提取第三方源链接（如 Instagram、YouTube、TikTok、Vimeo 等原始来源）并优先下载源视频，纯图片 Pin 自动获取高清原图
-  - 站点适配器模块化重构，提升解析效率与可维护性
-- 规范化元数据导入与来源记录：
-  - 明确导入 Eagle 时保存元数据（标题、平台标签、截取前 500 字符的简介摘要）
-  - 原始网页链接作为可选记录项，仅在用户开启“自动设置 Eagle 数据来源”偏好设置时写入
-- 全面加强安全与隐私合规（符合 Eagle 商店审核标准）：
-  - 明确依赖安装流程：缺少 yt-dlp 或 FFmpeg 时进入依赖管理页，由用户手动点击安装 yt-dlp（锁定版本 2026.08.19 并强制执行 SHA-256 完整性校验）；FFmpeg 依赖 Eagle 官方插件，未检测到时支持一键跳转应用商店
-  - 完善浏览器 Cookie 授权机制与隐私披露：作为选用功能默认关闭，需用户主动开启；开启后通过 yt-dlp 读取 Chrome 登录 Cookie，仅在请求受限内容及 Pinterest 提取的第三方来源时使用匹配 Cookie，全程不收集、不上传任何用户数据
-  - 移除所有第三方代理/镜像源与不安全 SSL 忽略逻辑，强制走官方受信任源与 HTTPS 安全连接
-  - 引入网络安全边界（net-guard），严格校验 URL 并阻断 localhost 及私有/保留 IP 地址
-- 优化网络连接与下载稳定性：
-  - 恢复系统默认网络代理行为，适配系统代理与 VPN 环境
-  - 优化 DNS 解析与多 CDN 节点自动回退，修复节点连接卡顿
-  - 完善网络异常分类与本地化错误文案
+全新 3.0.0 界面规范：
+- 重构主面板、下载队列卡片与底部输入栏
+- 新增「偏好设置」与「依赖管理」分栏
+- 版本更新提示改由设置齿轮红点徽标接管（替代原顶部横幅）
+
+新增偏好设置：
+- 可配置清晰度上限（最高 / 4K / 1080P 等）与帧率上限（最高 / 60fps / 30fps 等），无对应规格时自动向下匹配
+- 可选择是否将原始网页链接写入 Eagle 数据来源（默认开启）
+
+新增 Pinterest 支持：
+- 支持 Pinterest 图钉下载；转存内容自动提取第三方源（Instagram、YouTube、TikTok、Vimeo）并优先下载源视频
+- 纯图片 Pin 自动获取高清原图
+
+新增浏览器 Cookie 授权（可选，默认关闭）：
+- 需用户在偏好设置中主动开启；开启后若某受支持 HTTPS 链接下载失败，yt-dlp 可能读取 Chrome 中与目标网站匹配的登录 Cookie 并直接发送给该网站重试
+- 每个目标域名首次使用 Cookie 前均弹窗显示确切域名并请求授权；Cookie 不经开发者或任何中间服务器
+
+依赖管理调整：
+- FFmpeg 改为依赖 Eagle 官方 FFmpeg 插件，未安装时可一键跳转应用商店（不再自行下载 FFmpeg）
+- yt-dlp 锁定官方发布版本 2026.08.19 并强制 SHA-256 完整性校验
+- 移除下载源选择（镜像加速 / GitHub 直连），统一走 GitHub 官方源
+
+安全与隐私加强：
+- 移除所有第三方镜像源与不安全的 SSL 校验跳过逻辑
+- 插件自身发起的请求限定 HTTPS，阻断本地地址、私有 IP、非标准端口与含凭证（user:pass@host）的链接
+- 传递给 yt-dlp 的派生目标 URL 严格限制在已批准平台域名范围内（该边界不覆盖 yt-dlp 子进程自身的 DNS 解析与请求）
+- 网络异常与安全阻断分类提示，错误文案本地化
 
 ---
 
-- Redesigned UI & UX to 3.0.0 Specification:
-  - Upgraded UI to Figma 3.0.0 design system; refreshed main view, download queue cards, and bottom input bar
-  - Added dedicated tabs for Preferences and Dependency Management, supporting custom max resolution, max framerate, source URL recording, and cookie permissions
-  - Improved update notifications with non-intrusive badge indicator on the settings icon
-- New Platforms & Enhanced Extraction:
-  - Added Pinterest pin support (video & image), with automatic third-party source extraction (e.g. original Instagram, YouTube, TikTok, Vimeo sources) and high-resolution fallback for image pins
-  - Modularized site adapters for improved maintainability and extraction performance
-- Precise Metadata & Source URL Import:
-  - Accurately imports video title, platform extractor tags, and description summary (truncated to 500 characters) into Eagle
-  - Original webpage URL is saved to Eagle items only when the "Auto-set Eagle Data Source" preference is enabled by the user
-- Comprehensive Security, Privacy & Dependency Compliance (Eagle Store Review Standards):
-  - Transparent Dependency Flow: Missing dependencies open the Dependency Management tab; users manually install yt-dlp (pinned 2026.08.19 with mandatory SHA-256 verification); FFmpeg utilizes Eagle's official plugin with one-click store redirection when missing
-  - Explicit Browser Cookie Opt-in & Privacy Disclosure: Browser cookie access is strictly optional and disabled by default; when enabled, yt-dlp reads Chrome login cookies and applies matching cookies solely for target platform requests and third-party media extracted from Pinterest pins (e.g. Instagram, YouTube, TikTok, Vimeo). No cookie data is collected or uploaded to third parties
-  - Removed third-party mirror sources and insecure SSL bypasses, enforcing official trusted origins and HTTPS encryption
-  - Introduced network security boundary (net-guard) to validate URLs and block localhost and private/reserved IP addresses
-- Optimized Network & Download Stability:
-  - Restored system default network proxy behavior, compatible with system proxies and VPNs
-  - Improved DNS resolution with multi-CDN fallback to prevent connection stalls
-  - Enhanced network error classification and localized error messaging
+Redesigned UI & UX to 3.0.0 Specification:
+- Rebuilt main view, download queue cards, and bottom input bar
+- Added dedicated Preferences and Dependency Management tabs
+- Update notifications replaced by badge indicator on the settings icon (previously a top banner)
+
+New Preferences:
+- Configurable maximum resolution (Auto / 4K / 1080P, etc.) and framerate cap (Auto / 60fps / 30fps, etc.), with automatic fallback to the highest available quality
+- Option to save the original webpage URL as the Eagle item source (enabled by default)
+
+New Pinterest Support:
+- Download Pinterest pins (video & image); automatically extracts embedded third-party sources (Instagram, YouTube, TikTok, Vimeo) and downloads from the original source when available
+- Automatically fetches full-resolution images for image-only Pins
+
+New Browser Cookie Authorization (optional, off by default):
+- Requires explicit opt-in in Preferences; when enabled, if a download from any supported HTTPS URL fails, yt-dlp may read Chrome cookies matching that site and retry
+- A per-domain consent prompt shows the exact domain before using cookies for any site; cookies are sent by yt-dlp directly to the target site, never to a developer server
+
+Dependency Management Changes:
+- FFmpeg now requires the Eagle Official FFmpeg Plugin; a one-click link to the store is shown if it is not installed (no longer downloads FFmpeg automatically)
+- yt-dlp is pinned to the official release 2026.08.19 with mandatory SHA-256 integrity verification
+- Removed download source selection (mirror / GitHub direct); now always downloads from the official GitHub release
+
+Security & Privacy Hardening:
+- Removed all third-party mirror sources and insecure SSL bypass logic
+- The plugin's own requests are limited to HTTPS and block local addresses, private IPs, non-standard ports, and URLs with embedded credentials
+- Derived target URLs passed to yt-dlp are strictly limited to approved platform domains (this boundary does not cover yt-dlp's own DNS resolution or requests)
+- Network errors and security blocks are reported separately with localized messages
 
 
 ## 2.3.0
@@ -105,11 +121,11 @@
 - Removed runtime ffmpeg download; now uses Eagle's built-in ffmpeg directly
 - Fixed initialization failure on Windows caused by missing ffmpeg asset
 - Fixed blank plugin UI caused by missing i18next dependency
-- Renamed project to eagle-video-downloader to reflect support for 1000+ sites
+- Renamed project to eagle-video-downloader to reflect support for sites backed by yt-dlp
 
 ## 2.0.0
 
-- 重构为通用视频下载器，底层由 yt-dlp 驱动，支持 1000+ 视频网站
+- 重构为通用视频下载器，底层由 yt-dlp 驱动，支持 yt-dlp 支持的视频网站
 - 重构项目结构，源码迁移至 Plugin/ 目录，引入 esbuild 构建流程
 - 重构下载逻辑，支持多视频批量下载（autonumber 模板）
 - 重构 UI，引入下载队列模式，显示实时下载进度
@@ -118,7 +134,7 @@
 
 ---
 
-- Rebuilt as a universal video downloader powered by yt-dlp, supporting 1000+ sites
+- Rebuilt as a universal video downloader powered by yt-dlp, supporting sites backed by yt-dlp
 - Restructured project layout; source moved to Plugin/ with esbuild bundling
 - Added multi-video batch download support
 - Redesigned UI with download queue and real-time progress display
