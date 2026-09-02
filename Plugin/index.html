@@ -790,6 +790,52 @@
     .hidden {
       display: none !important;
     }
+
+    /* === Cookie Consent Dialog === */
+    #consentOverlay {
+      position: absolute;
+      inset: 0;
+      z-index: 200;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0, 0, 0, 0.6);
+    }
+    #consentOverlay.hidden {
+      display: none !important;
+    }
+    .consent-card {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-line);
+      border-radius: 8px;
+      padding: 16px;
+      width: 280px;
+      max-width: calc(100% - 32px);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .consent-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--fg1);
+      margin: 0;
+    }
+    .consent-body {
+      font-size: 11px;
+      color: var(--fg2);
+      line-height: 1.5;
+      margin: 0;
+    }
+    .consent-domain {
+      color: var(--brand);
+      font-weight: 600;
+    }
+    .consent-footer {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+    }
   </style>
   <script>window.__pluginScriptLoadFailed = false;</script>
   <script type="text/javascript" src="dist/plugin.js"
@@ -867,7 +913,7 @@
                 <div class="setting-row">
                   <div class="setting-info">
                     <span id="cookieConsentLabel" class="setting-title">Allow browser cookie access</span>
-                    <span id="cookieConsentHint" class="setting-desc">When enabled, downloading Pinterest and Instagram videos may read your Chrome login session. Cookies are only sent to the respective platform sites.</span>
+                    <span id="cookieConsentHint" class="setting-desc">Optional; disabled by default. When enabled, if a download from any supported HTTPS URL fails, yt-dlp may read Chrome login cookies matching that site and send them directly to it. No developer or intermediary server is involved. Pinterest-derived third-party sources will prompt you per domain.</span>
                   </div>
                   <label class="switch no-drag">
                     <input type="checkbox" id="cookieConsentToggle" />
@@ -950,6 +996,17 @@
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+      <!-- Cookie Consent Dialog Overlay -->
+      <div id="consentOverlay" class="hidden">
+        <div class="consent-card">
+          <p id="consentTitle" class="consent-title">Cookie Access Requested</p>
+          <p id="consentBody" class="consent-body"></p>
+          <div class="consent-footer">
+            <button id="consentDenyBtn" class="dep-btn danger no-drag">Deny</button>
+            <button id="consentAllowBtn" class="dep-btn primary no-drag">Allow</button>
           </div>
         </div>
       </div>

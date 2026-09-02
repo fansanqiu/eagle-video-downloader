@@ -1,6 +1,9 @@
 /**
  * 网络安全防护模块
  * 处理 IP 地址校验与 URL 安全检查（防 SSRF）
+ *
+ * 错误代码约定：安全拒绝（非网络故障）统一附带 err.code = 'ENETBOUNDARY'，
+ * 便于调用方与普通网络错误区分，以及 UI 层给出准确提示。
  */
 
 const net = require('net');
@@ -46,29 +49,53 @@ function isPrivateIp(ip) {
 }
 
 /**
- * 安全 URL 验证：仅允许 HTTPS，阻断 localhost 及内网/私有 IP 地址
- * DNS 解析失败直接拒绝，IPv4/IPv6 双栈解析校验；任一解析结果为私有即拒绝（fail-closed）
- * 返回 { parsed, addresses }，addresses 为已校验的目标 IP 列表，供调用方 pin IP 防 rebinding
+ * 安全 URL 验证：仅允许 HTTPS，限制端口为空或 443，阻断 localhost 及内网/私有 IP 地址。
+ * DNS 解析失败直接拒绝；仅 IPv4 解析（配合 --force-ipv4 与 pinnedLookup 的 family 4，
+ * 整个下载链路强制走 IPv4）；任一解析结果为私有即拒绝（fail-closed）。
+ * 返回 { parsed, addresses }，addresses 为已校验的目标 IP 列表，供调用方 pin IP 防 rebinding。
+ *
+ * 安全拒绝时抛出带 code='ENETBOUNDARY' 的 Error，普通网络故障不带该 code。
  */
+function boundaryError(message) {
+  const err = new Error(message);
+  err.code = 'ENETBOUNDARY';
+  return err;
+}
+
 async function validateUrl(url) {
   if (typeof url !== 'string' || !url.trim()) {
-    throw new Error('Invalid URL');
+    throw boundaryError('Invalid URL');
   }
 
-  const parsed = new URL(url);
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw boundaryError(`Invalid URL: ${url}`);
+  }
 
   if (parsed.protocol !== 'https:') {
-    throw new Error('Only HTTPS URLs are allowed');
+    throw boundaryError('Only HTTPS URLs are allowed');
+  }
+
+  // 拒绝含 userinfo（user:password@host）的 URL，防止凭证注入
+  if (parsed.username || parsed.password) {
+    throw boundaryError('URLs with userinfo (credentials) are not allowed');
+  }
+
+  // 仅允许默认 HTTPS 端口（443）或省略端口
+  if (parsed.port !== '' && parsed.port !== '443') {
+    throw boundaryError(`Non-standard port ${parsed.port} is not allowed`);
   }
 
   const hostname = parsed.hostname.toLowerCase();
   if (hostname === 'localhost' || hostname === '[::1]') {
-    throw new Error('Access to localhost is blocked');
+    throw boundaryError('Access to localhost is blocked');
   }
 
   if (net.isIP(hostname)) {
     if (isPrivateIp(hostname)) {
-      throw new Error(`Access to private IP address ${hostname} is blocked`);
+      throw boundaryError(`Access to private IP address ${hostname} is blocked`);
     }
     return { parsed, addresses: [hostname] };
   }
@@ -76,16 +103,16 @@ async function validateUrl(url) {
   try {
     const addresses = await dns.promises.resolve4(hostname).catch(() => []);
     if (addresses.length === 0) {
-      throw new Error(`DNS resolution returned no addresses for ${hostname}`);
+      throw boundaryError(`DNS resolution returned no addresses for ${hostname}`);
     }
     // fail-closed：任一解析结果为私有/保留地址即拒绝
     const badAddr = addresses.find(addr => isPrivateIp(addr));
     if (badAddr) {
-      throw new Error(`Resolved address ${badAddr} for ${hostname} is private, access blocked`);
+      throw boundaryError(`Resolved address ${badAddr} for ${hostname} is private, access blocked`);
     }
     return { parsed, addresses };
   } catch (e) {
-    if (e.message && (e.message.includes('private') || e.message.includes('blocked') || e.message.includes('no addresses'))) throw e;
+    if (e.code === 'ENETBOUNDARY') throw e;
     throw new Error(`DNS resolution failed for ${hostname}: ${e.message}`);
   }
 }
@@ -106,11 +133,36 @@ function pinnedLookup(addresses) {
 
 /**
  * 判断是否为网络连通性错误（超时/DNS/连接失败等）
- * 用于在 UI 层将底层错误替换为用户友好的「请检查网络」提示
+ * 用于在 UI 层将底层错误替换为用户友好的「请检查网络」提示。
+ * 注意：code='ENETBOUNDARY' 的安全阻断错误不属于网络故障，返回 false。
  */
 const NETWORK_ERROR_PATTERNS = /timed out|timeout|ENOTFOUND|ECONNREFUSED|ECONNRESET|EHOSTUNREACH|ENETUNREACH|EAI_AGAIN|socket hang up|DNS resolution/i;
 function isNetworkError(err) {
+  if (err?.code === 'ENETBOUNDARY') return false;
   return NETWORK_ERROR_PATTERNS.test(err?.message || '') || NETWORK_ERROR_PATTERNS.test(err?.code || '');
+}
+
+/**
+ * 校验 URL 的 hostname 是否属于允许的域名列表。
+ * 判断方式：hostname === domain 或 hostname.endsWith('.' + domain)（精确主机/子域匹配，
+ * 不使用全 URL 文本子串匹配，防止如 attacker.example/?ref=instagram.com 绕过）。
+ * @param {string} url  待检查的完整 URL
+ * @param {string[]} domains  允许的裸域名数组（如 ['instagram.com', 'youtube.com']）
+ * @throws {Error} code='ENETBOUNDARY' 当 hostname 不在允许列表时
+ */
+function assertHostAllowed(url, domains) {
+  let hostname;
+  try {
+    hostname = new URL(url).hostname.toLowerCase();
+  } catch {
+    throw boundaryError(`Invalid URL for host check: ${url}`);
+  }
+  const allowed = domains.some(
+    d => hostname === d || hostname.endsWith('.' + d)
+  );
+  if (!allowed) {
+    throw boundaryError(`Host ${hostname} is not in the allowed platform list`);
+  }
 }
 
 /**
@@ -132,6 +184,7 @@ async function secureHttpsGet(url, options, callback) {
 module.exports = {
   isPrivateIp,
   validateUrl,
+  assertHostAllowed,
   pinnedLookup,
   secureHttpsGet,
   isNetworkError,

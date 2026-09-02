@@ -1,10 +1,10 @@
-<img src="./docs/banner-docs.png">
+<img src="./docs/封面-中文.jpg">
 
 # Eagle Video Downloader
 
 [English](./README.en.md) | 中文
 
-从 1000+ 网站直接下载视频到 Eagle。基于 [yt-dlp](https://github.com/yt-dlp/yt-dlp) 构建。
+从 yt-dlp 支持的网站直接下载视频到 Eagle。基于 [yt-dlp](https://github.com/yt-dlp/yt-dlp) 构建。
 
 ## 支持的平台
 
@@ -12,7 +12,9 @@ YouTube、Twitter / X、TikTok、Bilibili、Instagram、Pinterest、Vimeo 以及
 
 ## 功能特性
 
-支持 1000+ 视频网站，首次运行需要在依赖管理页点击安装 yt-dlp，使用 Eagle 官方 FFmpeg 插件合并音视频，下载完成后自动导入到 Eagle 并保存元数据，支持中英文界面，显示实时下载进度。
+支持 yt-dlp 支持的视频网站，首次运行需要在依赖管理页点击安装 yt-dlp，使用 Eagle 官方 FFmpeg 插件合并音视频，下载完成后自动导入到 Eagle 并保存元数据，支持中英文界面，显示实时下载进度。同时支持下载 Pinterest 纯图片 Pin（自动获取高清原图）。
+
+浏览器 Cookie 访问为可选功能，默认关闭。开启后，若某个受支持 HTTPS 链接下载失败，yt-dlp 可能读取 Chrome 中与目标网站匹配的登录 Cookie 并直接发送给该网站。不经开发者或任何中间服务器。
 
 ## 安装方式
 
@@ -37,13 +39,14 @@ YouTube、Twitter / X、TikTok、Bilibili、Instagram、Pinterest、Vimeo 以及
 npm install      # 安装依赖
 npm run build    # 构建插件
 npm run dev      # 开发模式（监听文件变化）
+npm run package  # 打包插件
 ```
 
 项目使用 esbuild 打包，i18next 国际化，yt-dlp 负责视频提取，ffmpeg 由 Eagle 官方 FFmpeg 插件提供。
 
 ## 系统要求
 
-Eagle 4.0 或更高版本，需要网络连接。
+Eagle 4.0 或更高版本，需安装 Eagle 官方 FFmpeg 插件，需要网络连接。
 
 ## 开源协议
 
@@ -53,4 +56,4 @@ MIT © [fansanqiu](https://github.com/fansanqiu)
 
 ## 致谢
 
-本项目基于 [OlivierEstevez/eagle-twitter-video-downloader](https://github.com/OlivierEstevez/eagle-twitter-video-downloader) 开发，感谢原作者的开创性工作。
+本项目基于 [OlivierEstevez/eagle-twitter-video-downloader](https://github.com/OlivierEstevez/eagle-twitter-video-downloader) 开发，感谢原作者的开创性工作。视频解析与提取由 [yt-dlp](https://github.com/yt-dlp/yt-dlp) 提供支持，音视频合并与转码由 [FFmpeg](https://ffmpeg.org) 提供支持。

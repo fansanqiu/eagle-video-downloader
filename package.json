@@ -6,6 +6,7 @@
   "scripts": {
     "build": "node esbuild.config.js",
     "dev": "node esbuild.config.js --watch",
+    "test": "node js/net-guard.test.js",
     "package": "npm run build && node -e \"require('fs').rmSync('Plugin/bin', { recursive: true, force: true }); const zip = new (require('adm-zip'))(); zip.addLocalFolder('Plugin'); zip.writeZip('视频下载器.eagleplugin');\""
   },
   "keywords": [

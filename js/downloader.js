@@ -15,6 +15,8 @@ const siteAdapters = require("./sites");
 
 // Cookie 显式授权状态
 let cookieConsentGranted = false;
+// 派生域名 Cookie 弹窗确认函数（由 plugin.js 注入 ui.requestCookieConsentDialog）
+let cookieConsentPrompt = null;
 let maxResolution = "auto";
 let maxFramerate = "auto";
 
@@ -24,6 +26,31 @@ function setCookieConsent(granted) {
 
 function hasCookieConsent() {
   return cookieConsentGranted;
+}
+
+/**
+ * 注入派生域名 Cookie 确认函数（异步，显示弹窗并等待用户操作）。
+ * fn: (domain: string, kind: string) => Promise<boolean>
+ */
+function setCookieConsentPrompt(fn) {
+  cookieConsentPrompt = fn;
+}
+
+/**
+ * 检查是否可以为指定 URL 的目标域名使用 Chrome Cookie，
+ * 并在需要时通过弹窗向用户请求该域名的显式授权。
+ * 整合「开关是否开启」+「弹窗确认」+「会话缓存」三重判定，
+ * 适配器统一调用此函数，不应再直接判断 hasCookieConsent()。
+ * @param {string} url   目标 URL（用于提取 hostname）
+ * @param {string} [kind='direct']  'direct'（用户输入的链接）| 'derived'（Pinterest 派生源）
+ * @returns {Promise<boolean>}  true = 已授权可带 Cookie 重试
+ */
+async function authorizeCookies(url, kind = 'direct') {
+  if (!hasCookieConsent()) return false;
+  if (typeof cookieConsentPrompt !== 'function') return false;
+  let hostname;
+  try { hostname = new URL(url).hostname; } catch { return false; }
+  return await cookieConsentPrompt(hostname, kind);
 }
 
 function setQualityPrefs({ resolution = "auto", framerate = "auto" } = {}) {
@@ -67,7 +94,13 @@ function isCorruptedBinaryError(error) {
 /**
  * 执行 yt-dlp 命令
  */
-function execYtDlp(args, onProgress, onOutput, allowRecovery = true) {
+function execYtDlp(args, onProgress, onOutput, options = {}) {
+  // 兼容旧签名：第 4 参数传 boolean 时视为 { allowRecovery: value }
+  if (typeof options === 'boolean') {
+    options = { allowRecovery: options };
+  }
+  const { allowRecovery = true, targetUrl = null } = options;
+
   return new Promise((resolve, reject) => {
     const ytdlp = getYtDlpPath();
 
@@ -83,7 +116,7 @@ function execYtDlp(args, onProgress, onOutput, allowRecovery = true) {
     const recoverFromCorruptBinary = (error) => {
       try { fs.unlinkSync(ytdlp); } catch (e) {}
       downloadYtDlp()
-        .then(() => execYtDlp(args, onProgress, onOutput, false))
+        .then(() => execYtDlp(args, onProgress, onOutput, { allowRecovery: false, targetUrl }))
         .then(resolve)
         .catch(() => reject(new Error(`${i18next.t("error.failedToExecuteYtdlp")}: ${error.message}`)));
     };
@@ -154,8 +187,9 @@ function execYtDlp(args, onProgress, onOutput, allowRecovery = true) {
       if (code === 0) {
         resolve(stdout);
       } else {
-        const urlArg = args.find(a => typeof a === 'string' && a.startsWith('https'));
-        if (urlArg) {
+        // 使用调用方显式传入的 targetUrl 而非从 args 猜测，
+        // 避免 --referer https://www.pinterest.com/ 之类的 site args 被误选为目标 URL
+        if (targetUrl) {
           try {
             const recoveryResult = await siteAdapters.handleExecFailure({
               code,
@@ -165,8 +199,9 @@ function execYtDlp(args, onProgress, onOutput, allowRecovery = true) {
               onOutput,
               execYtDlp,
               hasCookieConsent,
+              authorizeCookies,
               getSiteArgsForUrl: siteAdapters.getSiteArgs,
-              url: urlArg,
+              url: targetUrl,
             });
             if (recoveryResult !== null) {
               resolve(recoveryResult);
@@ -250,6 +285,8 @@ async function downloadFile(url, outputPath, onProgress, maxRedirects = 5) {
 async function getVideoInfo(url) {
   await validateUrl(url);
   url = siteAdapters.normalizeUrl(url);
+  // normalizeUrl 可能产生派生 URL（如 Vimeo ID 转正规地址），必须重新校验
+  await validateUrl(url);
 
   const customInfo = await siteAdapters.customGetInfo(url, {
     execYtDlp,
@@ -264,11 +301,11 @@ async function getVideoInfo(url) {
 
   let output;
   try {
-    output = await execYtDlp(args);
+    output = await execYtDlp(args, null, null, { targetUrl: url });
   } catch (err) {
-    if (hasCookieConsent()) {
+    if (await authorizeCookies(url, 'direct')) {
       const cookieArgs = [...args, "--cookies-from-browser", "chrome"];
-      output = await execYtDlp(cookieArgs);
+      output = await execYtDlp(cookieArgs, null, null, { allowRecovery: false, targetUrl: url });
     } else {
       throw err;
     }
@@ -390,11 +427,16 @@ async function downloadVideo(url, onProgress, onStatus, preloadedInfo = null) {
   const sanitizedTitle = sanitizeFilename(videoInfo.title);
   const outputTemplate = path.join(outputDir, `${sanitizedTitle}_%(autonumber)s.%(ext)s`);
 
-  let targetUrl = (videoInfo && typeof videoInfo.webpage_url === 'string' && videoInfo.webpage_url.startsWith('https')) 
-    ? videoInfo.webpage_url 
+  let targetUrl = (videoInfo && typeof videoInfo.webpage_url === 'string' && videoInfo.webpage_url.startsWith('https'))
+    ? videoInfo.webpage_url
     : url;
   targetUrl = siteAdapters.normalizeUrl(targetUrl);
   await validateUrl(targetUrl);
+  // 若 videoInfo 来自 Pinterest 派生源，在 download 阶段复检白名单，
+  // 确保「派生 URL 严格限制在已批准平台域名」的声明端到端成立
+  if (videoInfo && videoInfo.derivedFrom === 'pinterest') {
+    siteAdapters.assertDerivedHostAllowed(targetUrl);
+  }
 
   const formatSelector = buildFormatSelector(maxResolution, maxFramerate);
 
@@ -419,7 +461,7 @@ async function downloadVideo(url, onProgress, onStatus, preloadedInfo = null) {
 
   const filesBefore = new Set(fs.existsSync(outputDir) ? fs.readdirSync(outputDir) : []);
 
-  await execYtDlp(args, onProgress);
+  await execYtDlp(args, onProgress, null, { targetUrl });
 
   const filesAfter = fs.readdirSync(outputDir);
   const newFiles = filesAfter.filter(f => !filesBefore.has(f) && f.startsWith(sanitizedTitle));
@@ -454,6 +496,8 @@ module.exports = {
   cleanup,
   setCookieConsent,
   hasCookieConsent,
+  authorizeCookies,
+  setCookieConsentPrompt,
   setQualityPrefs,
   buildFormatSelector,
 };

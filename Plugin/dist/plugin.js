@@ -2600,36 +2600,52 @@ var require_net_guard = __commonJS({
       }
       return false;
     }
+    function boundaryError(message) {
+      const err = new Error(message);
+      err.code = "ENETBOUNDARY";
+      return err;
+    }
     async function validateUrl(url) {
       if (typeof url !== "string" || !url.trim()) {
-        throw new Error("Invalid URL");
+        throw boundaryError("Invalid URL");
       }
-      const parsed = new URL(url);
+      let parsed;
+      try {
+        parsed = new URL(url);
+      } catch {
+        throw boundaryError(`Invalid URL: ${url}`);
+      }
       if (parsed.protocol !== "https:") {
-        throw new Error("Only HTTPS URLs are allowed");
+        throw boundaryError("Only HTTPS URLs are allowed");
+      }
+      if (parsed.username || parsed.password) {
+        throw boundaryError("URLs with userinfo (credentials) are not allowed");
+      }
+      if (parsed.port !== "" && parsed.port !== "443") {
+        throw boundaryError(`Non-standard port ${parsed.port} is not allowed`);
       }
       const hostname = parsed.hostname.toLowerCase();
       if (hostname === "localhost" || hostname === "[::1]") {
-        throw new Error("Access to localhost is blocked");
+        throw boundaryError("Access to localhost is blocked");
       }
       if (net.isIP(hostname)) {
         if (isPrivateIp(hostname)) {
-          throw new Error(`Access to private IP address ${hostname} is blocked`);
+          throw boundaryError(`Access to private IP address ${hostname} is blocked`);
         }
         return { parsed, addresses: [hostname] };
       }
       try {
         const addresses = await dns.promises.resolve4(hostname).catch(() => []);
         if (addresses.length === 0) {
-          throw new Error(`DNS resolution returned no addresses for ${hostname}`);
+          throw boundaryError(`DNS resolution returned no addresses for ${hostname}`);
         }
         const badAddr = addresses.find((addr) => isPrivateIp(addr));
         if (badAddr) {
-          throw new Error(`Resolved address ${badAddr} for ${hostname} is private, access blocked`);
+          throw boundaryError(`Resolved address ${badAddr} for ${hostname} is private, access blocked`);
         }
         return { parsed, addresses };
       } catch (e) {
-        if (e.message && (e.message.includes("private") || e.message.includes("blocked") || e.message.includes("no addresses")))
+        if (e.code === "ENETBOUNDARY")
           throw e;
         throw new Error(`DNS resolution failed for ${hostname}: ${e.message}`);
       }
@@ -2644,7 +2660,23 @@ var require_net_guard = __commonJS({
     }
     var NETWORK_ERROR_PATTERNS = /timed out|timeout|ENOTFOUND|ECONNREFUSED|ECONNRESET|EHOSTUNREACH|ENETUNREACH|EAI_AGAIN|socket hang up|DNS resolution/i;
     function isNetworkError2(err) {
+      if ((err == null ? void 0 : err.code) === "ENETBOUNDARY")
+        return false;
       return NETWORK_ERROR_PATTERNS.test((err == null ? void 0 : err.message) || "") || NETWORK_ERROR_PATTERNS.test((err == null ? void 0 : err.code) || "");
+    }
+    function assertHostAllowed(url, domains) {
+      let hostname;
+      try {
+        hostname = new URL(url).hostname.toLowerCase();
+      } catch {
+        throw boundaryError(`Invalid URL for host check: ${url}`);
+      }
+      const allowed = domains.some(
+        (d) => hostname === d || hostname.endsWith("." + d)
+      );
+      if (!allowed) {
+        throw boundaryError(`Host ${hostname} is not in the allowed platform list`);
+      }
     }
     async function secureHttpsGet(url, options, callback) {
       if (typeof options === "function") {
@@ -2659,6 +2691,7 @@ var require_net_guard = __commonJS({
     module2.exports = {
       isPrivateIp,
       validateUrl,
+      assertHostAllowed,
       pinnedLookup,
       secureHttpsGet,
       isNetworkError: isNetworkError2
@@ -3051,9 +3084,9 @@ var require_instagram = __commonJS({
         "User-Agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
       ];
     }
-    async function handleExecFailure({ args, onProgress, onOutput, execYtDlp, hasCookieConsent }) {
-      if (!args.includes("--cookies-from-browser") && hasCookieConsent()) {
-        return await execYtDlp([...args, "--cookies-from-browser", "chrome"], onProgress, onOutput, false);
+    async function handleExecFailure({ args, onProgress, onOutput, execYtDlp, authorizeCookies, url }) {
+      if (!args.includes("--cookies-from-browser") && await authorizeCookies(url, "direct")) {
+        return await execYtDlp([...args, "--cookies-from-browser", "chrome"], onProgress, onOutput, { allowRecovery: false, targetUrl: url });
       }
       return null;
     }
@@ -3068,7 +3101,8 @@ var require_instagram = __commonJS({
 // js/sites/pinterest.js
 var require_pinterest = __commonJS({
   "js/sites/pinterest.js"(exports2, module2) {
-    var { validateUrl, secureHttpsGet } = require_net_guard();
+    var { validateUrl, assertHostAllowed, secureHttpsGet } = require_net_guard();
+    var DERIVED_SOURCE_DOMAINS = ["instagram.com", "youtube.com", "youtu.be", "vimeo.com", "tiktok.com"];
     function match(url) {
       try {
         const host = new URL(url).hostname.replace(/^www\./, "").toLowerCase();
@@ -3105,6 +3139,7 @@ var require_pinterest = __commonJS({
                   redirectUrl = `${u.protocol}//${u.host}${redirectUrl}`;
                 }
                 try {
+                  assertHostAllowed(redirectUrl, ["pinterest.com", "pin.it", "pinimg.com"]);
                   await validateUrl(redirectUrl);
                   return fetchWithRedirect(redirectUrl, maxRedirects - 1).then(resolve);
                 } catch (err) {
@@ -3129,6 +3164,30 @@ var require_pinterest = __commonJS({
     async function fetchPageHtml(url) {
       await validateUrl(url);
       return await fetchWithRedirect(url);
+    }
+    function pickDerivedSourceUrl(html, pinId) {
+      let searchArea = html;
+      if (pinId) {
+        const entityIdx = html.indexOf(`"entityId":"${pinId}"`);
+        if (entityIdx !== -1) {
+          const start = Math.max(0, entityIdx - 8e3);
+          const end = Math.min(html.length, entityIdx + 8e3);
+          searchArea = html.substring(start, end);
+        }
+      }
+      const normalizedArea = searchArea.replace(/\\\//g, "/");
+      const candidates = normalizedArea.match(/https:\/\/[^\s"'<>\\]+/gi);
+      if (!candidates)
+        return null;
+      for (const raw of candidates) {
+        const cleaned = raw.replace(/\\\/|\\/g, "/").replace(/\\u0026/g, "&");
+        try {
+          assertHostAllowed(cleaned, DERIVED_SOURCE_DOMAINS);
+          return cleaned;
+        } catch {
+        }
+      }
+      return null;
     }
     async function extractPinterestPinData(pinterestUrl) {
       try {
@@ -3197,14 +3256,7 @@ var require_pinterest = __commonJS({
             }
           }
         }
-        const sourceMatches = html.match(
-          /https:\/\/[^\s"'<>\\]*?(?:instagram\.com|youtube\.com|vimeo\.com|tiktok\.com)[^\s"'<>\\]*/gi
-        );
-        if (sourceMatches && sourceMatches.length > 0) {
-          let cleanUrl = sourceMatches[0].replace(/\\\/|\\/g, "/");
-          cleanUrl = cleanUrl.replace(/\\u0026/g, "&");
-          result.sourceUrl = cleanUrl;
-        }
+        result.sourceUrl = pickDerivedSourceUrl(html, pinId);
         if (!result.title && result.description) {
           result.title = result.description.split("\n")[0].substring(0, 100);
         }
@@ -3237,11 +3289,14 @@ var require_pinterest = __commonJS({
       }
       if (hasVideoSource && !hasVideoContent) {
         const targetUrl = pinData.sourceUrl.replace(/\?img_index=\d+/, "");
+        assertHostAllowed(targetUrl, DERIVED_SOURCE_DOMAINS);
         await validateUrl(targetUrl);
         const args = ["--dump-json", "--no-warnings", ...getSiteArgsForUrl(targetUrl), targetUrl];
         try {
-          const output = await execYtDlp(args);
-          return parseYtDlpOutput(output, targetUrl);
+          const output = await execYtDlp(args, null, null, { targetUrl });
+          const info = parseYtDlpOutput(output, targetUrl);
+          info.derivedFrom = "pinterest";
+          return info;
         } catch (e) {
           if (pinData.imageUrl) {
             return {
@@ -3262,50 +3317,69 @@ var require_pinterest = __commonJS({
       }
       return null;
     }
-    async function handleExecFailure({ stderr, args, onProgress, onOutput, execYtDlp, hasCookieConsent, getSiteArgsForUrl, url }) {
-      const isNoFormats = stderr.includes("No video formats found") || stderr.includes("[Pinterest]") || stderr.includes("login") || stderr.includes("redirect");
+    async function handleExecFailure({ stderr, args, onProgress, onOutput, execYtDlp, hasCookieConsent, authorizeCookies, getSiteArgsForUrl, url }) {
+      const isNoFormats = stderr.includes("No video formats found") || stderr.includes("[Pinterest]");
       if (!isNoFormats)
         return null;
-      const alreadyTriedSource = args.some((a) => typeof a === "string" && (a.includes("instagram.com") || a.includes("youtube.com") || a.includes("vimeo.com") || a.includes("tiktok.com")));
+      const alreadyTriedSource = (() => {
+        try {
+          return args.some((a) => {
+            if (typeof a !== "string" || !a.startsWith("https"))
+              return false;
+            const host = new URL(a).hostname.toLowerCase();
+            return DERIVED_SOURCE_DOMAINS.some((d) => host === d || host.endsWith("." + d));
+          });
+        } catch {
+          return false;
+        }
+      })();
       let extractedSourceUrl = null;
       if (!alreadyTriedSource) {
         let sourceUrl = await extractPinterestPinData(url).then((d) => (d == null ? void 0 : d.sourceUrl) ?? null);
         if (sourceUrl) {
           sourceUrl = sourceUrl.replace(/\?img_index=\d+/, "");
+          try {
+            assertHostAllowed(sourceUrl, DERIVED_SOURCE_DOMAINS);
+            await validateUrl(sourceUrl);
+          } catch {
+            return null;
+          }
           extractedSourceUrl = sourceUrl;
           const oldSiteArgs = getSiteArgs();
-          let cleanedArgs = args.filter((a) => !oldSiteArgs.includes(a) && a !== "--cookies-from-browser" && a !== "chrome");
+          const cleanedArgs = args.filter((a) => !oldSiteArgs.includes(a) && a !== "--cookies-from-browser" && a !== "chrome");
           const newSiteArgs = getSiteArgsForUrl(sourceUrl);
           const newArgs = cleanedArgs.map((a) => a === url ? sourceUrl : a);
           newArgs.push(...newSiteArgs);
           try {
-            return await execYtDlp(newArgs, onProgress, onOutput, false);
+            return await execYtDlp(newArgs, onProgress, onOutput, { allowRecovery: false, targetUrl: sourceUrl });
           } catch (e) {
-            if (hasCookieConsent()) {
+            if (await authorizeCookies(sourceUrl, "derived")) {
               try {
-                return await execYtDlp([...newArgs, "--cookies-from-browser", "chrome"], onProgress, onOutput, false);
+                return await execYtDlp([...newArgs, "--cookies-from-browser", "chrome"], onProgress, onOutput, { allowRecovery: false, targetUrl: sourceUrl });
               } catch (e2) {
               }
             }
           }
         }
       }
-      if (!extractedSourceUrl && hasCookieConsent()) {
-        const alreadyTriedCookies = args.includes("--cookies-from-browser");
-        if (!alreadyTriedCookies) {
-          try {
-            return await execYtDlp([...args, "--cookies-from-browser", "chrome"], onProgress, onOutput, false);
-          } catch (e) {
-          }
+      if (!extractedSourceUrl && !args.includes("--cookies-from-browser") && await authorizeCookies(url, "direct")) {
+        try {
+          return await execYtDlp([...args, "--cookies-from-browser", "chrome"], onProgress, onOutput, { allowRecovery: false, targetUrl: url });
+        } catch (e) {
         }
       }
       return null;
+    }
+    function assertDerivedHostAllowed(url) {
+      assertHostAllowed(url, DERIVED_SOURCE_DOMAINS);
     }
     module2.exports = {
       match,
       getSiteArgs,
       customGetInfo,
-      handleExecFailure
+      handleExecFailure,
+      pickDerivedSourceUrl,
+      assertDerivedHostAllowed
     };
   }
 });
@@ -3364,12 +3438,16 @@ var require_sites = __commonJS({
       }
       return null;
     }
+    function assertDerivedHostAllowed(url) {
+      return pinterest.assertDerivedHostAllowed(url);
+    }
     module2.exports = {
       findAdapter,
       normalizeUrl,
       getSiteArgs,
       customGetInfo,
-      handleExecFailure
+      handleExecFailure,
+      assertDerivedHostAllowed
     };
   }
 });
@@ -3386,6 +3464,7 @@ var require_downloader = __commonJS({
     var { validateUrl, secureHttpsGet } = require_net_guard();
     var siteAdapters = require_sites();
     var cookieConsentGranted = false;
+    var cookieConsentPrompt = null;
     var maxResolution = "auto";
     var maxFramerate = "auto";
     function setCookieConsent(granted) {
@@ -3393,6 +3472,22 @@ var require_downloader = __commonJS({
     }
     function hasCookieConsent() {
       return cookieConsentGranted;
+    }
+    function setCookieConsentPrompt(fn) {
+      cookieConsentPrompt = fn;
+    }
+    async function authorizeCookies(url, kind = "direct") {
+      if (!hasCookieConsent())
+        return false;
+      if (typeof cookieConsentPrompt !== "function")
+        return false;
+      let hostname;
+      try {
+        hostname = new URL(url).hostname;
+      } catch {
+        return false;
+      }
+      return await cookieConsentPrompt(hostname, kind);
     }
     function setQualityPrefs({ resolution = "auto", framerate = "auto" } = {}) {
       maxResolution = resolution || "auto";
@@ -3420,7 +3515,11 @@ var require_downloader = __commonJS({
     function isCorruptedBinaryError(error) {
       return error.code === "EBADMACHO" || error.code === "ENOEXEC" || error.errno === -88;
     }
-    function execYtDlp(args, onProgress, onOutput, allowRecovery = true) {
+    function execYtDlp(args, onProgress, onOutput, options = {}) {
+      if (typeof options === "boolean") {
+        options = { allowRecovery: options };
+      }
+      const { allowRecovery = true, targetUrl = null } = options;
       return new Promise((resolve, reject) => {
         const ytdlp = getYtDlpPath();
         if (!fs.existsSync(ytdlp)) {
@@ -3438,7 +3537,7 @@ var require_downloader = __commonJS({
             fs.unlinkSync(ytdlp);
           } catch (e) {
           }
-          downloadYtDlp2().then(() => execYtDlp(args, onProgress, onOutput, false)).then(resolve).catch(() => reject(new Error(`${i18next3.t("error.failedToExecuteYtdlp")}: ${error.message}`)));
+          downloadYtDlp2().then(() => execYtDlp(args, onProgress, onOutput, { allowRecovery: false, targetUrl })).then(resolve).catch(() => reject(new Error(`${i18next3.t("error.failedToExecuteYtdlp")}: ${error.message}`)));
         };
         const finalArgs = args.includes("--force-ipv4") ? args : ["--force-ipv4", ...args];
         let proc;
@@ -3496,8 +3595,7 @@ var require_downloader = __commonJS({
           if (code === 0) {
             resolve(stdout);
           } else {
-            const urlArg = args.find((a) => typeof a === "string" && a.startsWith("https"));
-            if (urlArg) {
+            if (targetUrl) {
               try {
                 const recoveryResult = await siteAdapters.handleExecFailure({
                   code,
@@ -3507,8 +3605,9 @@ var require_downloader = __commonJS({
                   onOutput,
                   execYtDlp,
                   hasCookieConsent,
+                  authorizeCookies,
                   getSiteArgsForUrl: siteAdapters.getSiteArgs,
-                  url: urlArg
+                  url: targetUrl
                 });
                 if (recoveryResult !== null) {
                   resolve(recoveryResult);
@@ -3584,6 +3683,7 @@ var require_downloader = __commonJS({
     async function getVideoInfo(url) {
       await validateUrl(url);
       url = siteAdapters.normalizeUrl(url);
+      await validateUrl(url);
       const customInfo = await siteAdapters.customGetInfo(url, {
         execYtDlp,
         parseYtDlpOutput,
@@ -3595,11 +3695,11 @@ var require_downloader = __commonJS({
       const args = ["--dump-json", "--no-warnings", ...siteAdapters.getSiteArgs(url), url];
       let output;
       try {
-        output = await execYtDlp(args);
+        output = await execYtDlp(args, null, null, { targetUrl: url });
       } catch (err) {
-        if (hasCookieConsent()) {
+        if (await authorizeCookies(url, "direct")) {
           const cookieArgs = [...args, "--cookies-from-browser", "chrome"];
-          output = await execYtDlp(cookieArgs);
+          output = await execYtDlp(cookieArgs, null, null, { allowRecovery: false, targetUrl: url });
         } else {
           throw err;
         }
@@ -3701,6 +3801,9 @@ var require_downloader = __commonJS({
       let targetUrl = videoInfo && typeof videoInfo.webpage_url === "string" && videoInfo.webpage_url.startsWith("https") ? videoInfo.webpage_url : url;
       targetUrl = siteAdapters.normalizeUrl(targetUrl);
       await validateUrl(targetUrl);
+      if (videoInfo && videoInfo.derivedFrom === "pinterest") {
+        siteAdapters.assertDerivedHostAllowed(targetUrl);
+      }
       const formatSelector = buildFormatSelector(maxResolution, maxFramerate);
       const args = [
         targetUrl,
@@ -3720,7 +3823,7 @@ var require_downloader = __commonJS({
       if (onStatus)
         onStatus(i18next3.t("ui.downloading"));
       const filesBefore = new Set(fs.existsSync(outputDir) ? fs.readdirSync(outputDir) : []);
-      await execYtDlp(args, onProgress);
+      await execYtDlp(args, onProgress, null, { targetUrl });
       const filesAfter = fs.readdirSync(outputDir);
       const newFiles = filesAfter.filter((f) => !filesBefore.has(f) && f.startsWith(sanitizedTitle));
       if (newFiles.length === 0) {
@@ -3746,6 +3849,8 @@ var require_downloader = __commonJS({
       cleanup,
       setCookieConsent,
       hasCookieConsent,
+      authorizeCookies,
+      setCookieConsentPrompt,
       setQualityPrefs,
       buildFormatSelector
     };
@@ -4162,6 +4267,72 @@ var require_ui = __commonJS({
           break;
       }
     }
+    var _consentApproved = /* @__PURE__ */ new Set();
+    var _consentQueue = Promise.resolve();
+    function requestCookieConsentDialog(domain, kind = "derived") {
+      if (_consentApproved.has(domain))
+        return Promise.resolve(true);
+      const result = _consentQueue.then(() => _showConsentDialog(domain, kind));
+      _consentQueue = result.then(() => {
+      }, () => {
+      });
+      return result;
+    }
+    function _showConsentDialog(domain, kind = "derived") {
+      return new Promise((resolve) => {
+        const overlay = document.getElementById("consentOverlay");
+        const titleEl = document.getElementById("consentTitle");
+        const bodyEl = document.getElementById("consentBody");
+        const allowBtn = document.getElementById("consentAllowBtn");
+        const denyBtn = document.getElementById("consentDenyBtn");
+        if (!overlay || !titleEl || !bodyEl || !allowBtn || !denyBtn) {
+          resolve(false);
+          return;
+        }
+        titleEl.textContent = i18next.t("consent.title");
+        bodyEl.textContent = "";
+        const prefixKey = kind === "direct" ? "consent.bodyPrefixDirect" : "consent.bodyPrefixDerived";
+        const prefix = document.createTextNode(i18next.t(prefixKey) + " ");
+        const domainSpan = document.createElement("span");
+        domainSpan.className = "consent-domain";
+        domainSpan.textContent = domain;
+        const suffix = document.createTextNode(" " + i18next.t("consent.bodySuffix"));
+        bodyEl.appendChild(prefix);
+        bodyEl.appendChild(domainSpan);
+        bodyEl.appendChild(suffix);
+        allowBtn.textContent = i18next.t("consent.allow");
+        denyBtn.textContent = i18next.t("consent.deny");
+        overlay.classList.remove("hidden");
+        const cleanup = () => {
+          overlay.classList.add("hidden");
+          allowBtn.removeEventListener("click", onAllow);
+          denyBtn.removeEventListener("click", onDeny);
+          document.removeEventListener("keydown", onKeyDown);
+          overlay.removeEventListener("click", onOverlayClick);
+        };
+        const onAllow = () => {
+          _consentApproved.add(domain);
+          cleanup();
+          resolve(true);
+        };
+        const onDeny = () => {
+          cleanup();
+          resolve(false);
+        };
+        const onKeyDown = (e) => {
+          if (e.key === "Escape")
+            onDeny();
+        };
+        const onOverlayClick = (e) => {
+          if (e.target === overlay)
+            onDeny();
+        };
+        allowBtn.addEventListener("click", onAllow, { once: true });
+        denyBtn.addEventListener("click", onDeny, { once: true });
+        document.addEventListener("keydown", onKeyDown);
+        overlay.addEventListener("click", onOverlayClick);
+      });
+    }
     module2.exports = {
       updateTheme,
       showMainUI,
@@ -4178,7 +4349,8 @@ var require_ui = __commonJS({
       switchSubpageTab,
       updateDepsBadge,
       updateYtdlpCard,
-      updateFfmpegCard
+      updateFfmpegCard,
+      requestCookieConsentDialog
     };
   }
 });
@@ -4243,6 +4415,7 @@ var require_en = __commonJS({
         failedToExecuteYtdlp: "Failed to execute yt-dlp",
         ytdlpExitedWithCode: "yt-dlp exited with code",
         networkUnavailable: "Network unavailable \u2014 check your connection or proxy settings and retry",
+        blockedAddress: "Access blocked \u2014 this address is not allowed",
         unknown: "Unknown"
       },
       progress: {
@@ -4263,7 +4436,7 @@ var require_en = __commonJS({
         autoAddSourceLabel: "Auto-set Eagle Data Source",
         autoAddSourceHint: "When enabled, original web URLs are automatically saved to Eagle items",
         cookieConsentLabel: "Allow browser cookie access",
-        cookieConsentHint: "When enabled, downloading Pinterest and Instagram videos may read your Chrome login session. Cookies are only sent to the respective platform sites.",
+        cookieConsentHint: "Optional; disabled by default. When enabled, if a download from any supported HTTPS URL fails, yt-dlp may read Chrome login cookies matching that site and send them directly to it. No developer or intermediary server is involved. Pinterest-derived third-party sources will prompt you per domain.",
         maxResolutionLabel: "Max Resolution",
         maxResolutionHint: "Limit the maximum video resolution. If not available, automatically falls back to the highest available resolution.",
         maxFramerateLabel: "Max Frame Rate",
@@ -4301,6 +4474,14 @@ var require_en = __commonJS({
         versionInstalled: "Version: {{version}}",
         versionUpdate: "{{from}} \u2192 {{to}}",
         progressText: "Downloading... {{percent}}%"
+      },
+      consent: {
+        title: "Cookie Access Requested",
+        bodyPrefixDirect: "About to download from",
+        bodyPrefixDerived: "This Pinterest Pin contains a video hosted on",
+        bodySuffix: "Allow yt-dlp to use your Chrome cookies to download it? Cookies are sent by yt-dlp directly to that site and its content servers, never to a developer server.",
+        allow: "Allow",
+        deny: "Deny"
       }
     };
   }
@@ -4366,6 +4547,7 @@ var require_zh_CN = __commonJS({
         failedToExecuteYtdlp: "\u6267\u884C yt-dlp \u5931\u8D25",
         ytdlpExitedWithCode: "yt-dlp \u9000\u51FA\uFF0C\u4EE3\u7801",
         networkUnavailable: "\u7F51\u7EDC\u4E0D\u53EF\u7528 \u2014\u2014 \u8BF7\u68C0\u67E5\u7F51\u7EDC\u8FDE\u63A5\u6216\u4EE3\u7406\u8BBE\u7F6E\u540E\u91CD\u8BD5",
+        blockedAddress: "\u8BBF\u95EE\u88AB\u963B\u65AD \u2014\u2014 \u8BE5\u5730\u5740\u4E0D\u88AB\u5141\u8BB8",
         unknown: "\u672A\u77E5"
       },
       progress: {
@@ -4386,7 +4568,7 @@ var require_zh_CN = __commonJS({
         autoAddSourceLabel: "\u81EA\u52A8\u8BBE\u7F6E Eagle \u6570\u636E\u6765\u6E90",
         autoAddSourceHint: "\u5F00\u542F\u540E\uFF0C\u4E0B\u8F7D\u89C6\u9891\u65F6\u4F1A\u81EA\u52A8\u5728 Eagle \u4E2D\u8BB0\u5F55\u539F\u59CB\u7F51\u9875 URL",
         cookieConsentLabel: "\u5141\u8BB8\u4F7F\u7528\u6D4F\u89C8\u5668 Cookie",
-        cookieConsentHint: "\u5F00\u542F\u540E\uFF0C\u4E0B\u8F7D Pinterest \u548C Instagram \u89C6\u9891\u65F6\u53EF\u80FD\u8BFB\u53D6 Chrome \u6D4F\u89C8\u5668\u7684\u767B\u5F55\u4FE1\u606F\u3002Cookie \u4EC5\u53D1\u9001\u81F3\u5BF9\u5E94\u5E73\u53F0\u7F51\u7AD9\u3002",
+        cookieConsentHint: "\u53EF\u9009\u529F\u80FD\uFF0C\u9ED8\u8BA4\u5173\u95ED\u3002\u5F00\u542F\u540E\uFF0C\u82E5\u67D0\u4E2A\u53D7\u652F\u6301 HTTPS \u94FE\u63A5\u4E0B\u8F7D\u5931\u8D25\uFF0Cyt-dlp \u53EF\u80FD\u8BFB\u53D6 Chrome \u4E2D\u4E0E\u76EE\u6807\u7F51\u7AD9\u5339\u914D\u7684\u767B\u5F55 Cookie \u5E76\u76F4\u63A5\u53D1\u9001\u7ED9\u8BE5\u7F51\u7AD9\u3002\u4E0D\u7ECF\u5F00\u53D1\u8005\u6216\u4EFB\u4F55\u4E2D\u95F4\u670D\u52A1\u5668\u3002Pinterest \u6D3E\u751F\u7684\u7B2C\u4E09\u65B9\u57DF\u540D\u4F1A\u9010\u57DF\u540D\u5F39\u7A97\u8BF7\u6C42\u786E\u8BA4\u3002",
         maxResolutionLabel: "\u6E05\u6670\u5EA6\u4E0A\u9650",
         maxResolutionHint: "\u9650\u5236\u4E0B\u8F7D\u7684\u6700\u5927\u6E05\u6670\u5EA6\u3002\u82E5\u76EE\u6807\u89C6\u9891\u65E0\u5BF9\u5E94\u753B\u8D28\uFF0C\u5C06\u81EA\u52A8\u5411\u4E0B\u5339\u914D\u6700\u9AD8\u53EF\u7528\u6E05\u6670\u5EA6\u3002",
         maxFramerateLabel: "\u5E27\u7387\u4E0A\u9650",
@@ -4424,6 +4606,14 @@ var require_zh_CN = __commonJS({
         versionInstalled: "\u7248\u672C\uFF1A{{version}}",
         versionUpdate: "{{from}} \u2192 {{to}}",
         progressText: "\u6B63\u5728\u4E0B\u8F7D... {{percent}}%"
+      },
+      consent: {
+        title: "Cookie \u4F7F\u7528\u6388\u6743",
+        bodyPrefixDirect: "\u5373\u5C06\u4ECE",
+        bodyPrefixDerived: "\u6B64 Pinterest Pin \u5305\u542B\u6765\u81EA",
+        bodySuffix: "\u7684\u5185\u5BB9\u3002\u5141\u8BB8 yt-dlp \u4F7F\u7528 Chrome Cookie \u4E0B\u8F7D\uFF1FCookie \u7531\u672C\u673A yt-dlp \u76F4\u63A5\u53D1\u9001\u7ED9\u8BE5\u7F51\u7AD9\u53CA\u5176\u5185\u5BB9\u670D\u52A1\u5668\uFF0C\u4E0D\u7ECF\u5F00\u53D1\u8005\u670D\u52A1\u5668\u3002",
+        allow: "\u5141\u8BB8",
+        deny: "\u62D2\u7EDD"
       }
     };
   }
@@ -4532,6 +4722,7 @@ eagle.onPluginCreate(async (plugin) => {
   ui.updateTheme();
   setupEventListeners();
   downloader.setCookieConsent(getCookieConsentPref());
+  downloader.setCookieConsentPrompt(ui.requestCookieConsentDialog);
   downloader.setQualityPrefs({
     resolution: getMaxResolutionPref(),
     framerate: getMaxFrameratePref()
@@ -4728,7 +4919,13 @@ async function executeDownload(item) {
     }
   } catch (error) {
     item.state = "error";
-    item.error = isNetworkError(error) ? i18next2.t("error.networkUnavailable") : error.message || i18next2.t("download.failed");
+    if ((error == null ? void 0 : error.code) === "ENETBOUNDARY") {
+      item.error = i18next2.t("error.blockedAddress");
+    } else if (isNetworkError(error)) {
+      item.error = i18next2.t("error.networkUnavailable");
+    } else {
+      item.error = error.message || i18next2.t("download.failed");
+    }
     ui.updateQueueItem(item.id, item);
   } finally {
     activeCount--;

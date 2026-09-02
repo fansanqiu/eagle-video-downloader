@@ -55,6 +55,7 @@
     "failedToExecuteYtdlp": "Failed to execute yt-dlp",
     "ytdlpExitedWithCode": "yt-dlp exited with code",
     "networkUnavailable": "Network unavailable — check your connection or proxy settings and retry",
+    "blockedAddress": "Access blocked — this address is not allowed",
     "unknown": "Unknown"
   },
   "progress": {
@@ -75,7 +76,7 @@
     "autoAddSourceLabel": "Auto-set Eagle Data Source",
     "autoAddSourceHint": "When enabled, original web URLs are automatically saved to Eagle items",
     "cookieConsentLabel": "Allow browser cookie access",
-    "cookieConsentHint": "When enabled, downloading Pinterest and Instagram videos may read your Chrome login session. Cookies are only sent to the respective platform sites.",
+    "cookieConsentHint": "Optional; disabled by default. When enabled, if a download from any supported HTTPS URL fails, yt-dlp may read Chrome login cookies matching that site and send them directly to it. No developer or intermediary server is involved. Pinterest-derived third-party sources will prompt you per domain.",
     "maxResolutionLabel": "Max Resolution",
     "maxResolutionHint": "Limit the maximum video resolution. If not available, automatically falls back to the highest available resolution.",
     "maxFramerateLabel": "Max Frame Rate",
@@ -113,5 +114,13 @@
     "versionInstalled": "Version: {{version}}",
     "versionUpdate": "{{from}} → {{to}}",
     "progressText": "Downloading... {{percent}}%"
+  },
+  "consent": {
+    "title": "Cookie Access Requested",
+    "bodyPrefixDirect": "About to download from",
+    "bodyPrefixDerived": "This Pinterest Pin contains a video hosted on",
+    "bodySuffix": "Allow yt-dlp to use your Chrome cookies to download it? Cookies are sent by yt-dlp directly to that site and its content servers, never to a developer server.",
+    "allow": "Allow",
+    "deny": "Deny"
   }
 }

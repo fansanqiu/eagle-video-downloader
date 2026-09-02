@@ -59,10 +59,21 @@ async function handleExecFailure(context) {
   return null;
 }
 
+/**
+ * 校验 URL 是否属于 Pinterest 允许的派生平台域名（转发 pinterest 适配器实现）。
+ * 在 downloadVideo 阶段对 yt-dlp 返回的 webpage_url 复检，
+ * 确保仅当 videoInfo.derivedFrom === 'pinterest' 时调用。
+ * @throws {Error} code='ENETBOUNDARY'
+ */
+function assertDerivedHostAllowed(url) {
+  return pinterest.assertDerivedHostAllowed(url);
+}
+
 module.exports = {
   findAdapter,
   normalizeUrl,
   getSiteArgs,
   customGetInfo,
   handleExecFailure,
+  assertDerivedHostAllowed,
 };

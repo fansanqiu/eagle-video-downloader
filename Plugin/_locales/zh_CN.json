@@ -55,6 +55,7 @@
     "failedToExecuteYtdlp": "执行 yt-dlp 失败",
     "ytdlpExitedWithCode": "yt-dlp 退出，代码",
     "networkUnavailable": "网络不可用 —— 请检查网络连接或代理设置后重试",
+    "blockedAddress": "访问被阻断 —— 该地址不被允许",
     "unknown": "未知"
   },
   "progress": {
@@ -75,7 +76,7 @@
     "autoAddSourceLabel": "自动设置 Eagle 数据来源",
     "autoAddSourceHint": "开启后，下载视频时会自动在 Eagle 中记录原始网页 URL",
     "cookieConsentLabel": "允许使用浏览器 Cookie",
-    "cookieConsentHint": "开启后，下载 Pinterest 和 Instagram 视频时可能读取 Chrome 浏览器的登录信息。Cookie 仅发送至对应平台网站。",
+    "cookieConsentHint": "可选功能，默认关闭。开启后，若某个受支持 HTTPS 链接下载失败，yt-dlp 可能读取 Chrome 中与目标网站匹配的登录 Cookie 并直接发送给该网站。不经开发者或任何中间服务器。Pinterest 派生的第三方域名会逐域名弹窗请求确认。",
     "maxResolutionLabel": "清晰度上限",
     "maxResolutionHint": "限制下载的最大清晰度。若目标视频无对应画质，将自动向下匹配最高可用清晰度。",
     "maxFramerateLabel": "帧率上限",
@@ -113,5 +114,13 @@
     "versionInstalled": "版本：{{version}}",
     "versionUpdate": "{{from}} → {{to}}",
     "progressText": "正在下载... {{percent}}%"
+  },
+  "consent": {
+    "title": "Cookie 使用授权",
+    "bodyPrefixDirect": "即将从",
+    "bodyPrefixDerived": "此 Pinterest Pin 包含来自",
+    "bodySuffix": "的内容。允许 yt-dlp 使用 Chrome Cookie 下载？Cookie 由本机 yt-dlp 直接发送给该网站及其内容服务器，不经开发者服务器。",
+    "allow": "允许",
+    "deny": "拒绝"
   }
 }

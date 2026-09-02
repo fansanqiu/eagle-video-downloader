@@ -160,6 +160,8 @@ eagle.onPluginCreate(async (plugin) => {
   ui.updateTheme();
   setupEventListeners();
   downloader.setCookieConsent(getCookieConsentPref());
+  // 注入派生域名 Cookie 弹窗确认函数（保持 downloader 不直接依赖 ui）
+  downloader.setCookieConsentPrompt(ui.requestCookieConsentDialog);
   downloader.setQualityPrefs({
     resolution: getMaxResolutionPref(),
     framerate: getMaxFrameratePref(),
@@ -417,7 +419,13 @@ async function executeDownload(item) {
     }
   } catch (error) {
     item.state = "error";
-    item.error = isNetworkError(error) ? i18next.t("error.networkUnavailable") : (error.message || i18next.t("download.failed"));
+    if (error?.code === 'ENETBOUNDARY') {
+      item.error = i18next.t("error.blockedAddress");
+    } else if (isNetworkError(error)) {
+      item.error = i18next.t("error.networkUnavailable");
+    } else {
+      item.error = error.message || i18next.t("download.failed");
+    }
     ui.updateQueueItem(item.id, item);
   } finally {
     activeCount--;
