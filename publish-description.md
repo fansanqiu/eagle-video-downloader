@@ -14,7 +14,7 @@
 ## 简短描述（一句话）
 
 中文：
-从 YouTube、Twitter / X、TikTok、Bilibili、Pinterest 等 yt-dlp 支持的网站下载视频，以及下载 Pinterest 纯图片 Pin，完成后自动连同元数据导入 Eagle。
+从 yt-dlp 支持的网站下载视频或 Pinterest 纯图片 Pin，完成后自动连同标题、平台标签和简介摘要导入 Eagle。
 
 英文：
 Download videos from sites supported by yt-dlp and image-only Pinterest Pins, then automatically import completed media into Eagle with useful metadata.
