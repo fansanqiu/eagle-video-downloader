@@ -14,7 +14,7 @@ YouTube, Twitter / X, TikTok, Bilibili, Instagram, Pinterest, Vimeo, and [many m
 
 Supports sites backed by yt-dlp. Install yt-dlp via the dependency manager on first launch. Uses Eagle's official FFmpeg plugin for audio/video merging. Automatically imports downloaded videos to Eagle with metadata. Supports Chinese and English interfaces with real-time progress display. Also supports downloading image-only Pinterest Pins (fetches full-resolution originals automatically).
 
-Chrome Cookie access is an optional feature, disabled by default. When enabled, if a download from any supported HTTPS URL fails, yt-dlp may read Chrome login cookies matching that site and send them directly to it. No developer or intermediary server is involved.
+Chrome cookie access is optional and disabled by default. After a download fails and the user confirms the target domain, locally running yt-dlp may read matching Chrome login cookies and use them in requests to the relevant website, content servers, or services reached through redirects. The plugin has no developer-operated cookie-collection server.
 
 ## Installation
 

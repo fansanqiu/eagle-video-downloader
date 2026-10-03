@@ -14,7 +14,7 @@ YouTube、Twitter / X、TikTok、Bilibili、Instagram、Pinterest、Vimeo 以及
 
 支持 yt-dlp 支持的视频网站，首次运行需要在依赖管理页点击安装 yt-dlp，使用 Eagle 官方 FFmpeg 插件合并音视频，下载完成后自动导入到 Eagle 并保存元数据，支持中英文界面，显示实时下载进度。同时支持下载 Pinterest 纯图片 Pin（自动获取高清原图）。
 
-浏览器 Cookie 访问为可选功能，默认关闭。开启后，若某个受支持 HTTPS 链接下载失败，yt-dlp 可能读取 Chrome 中与目标网站匹配的登录 Cookie 并直接发送给该网站。不经开发者或任何中间服务器。
+浏览器 Cookie 访问为可选功能，默认关闭。下载失败时，经用户确认目标域名后，本地 yt-dlp 可能读取匹配的 Chrome 登录 Cookie，并在请求相关网站、内容服务器或重定向所到达的服务时使用。插件没有开发者运营的 Cookie 收集服务器。
 
 ## 安装方式
 

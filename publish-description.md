@@ -14,10 +14,10 @@
 ## 简短描述（一句话）
 
 中文：
-从 yt-dlp 支持的网站下载视频或 Pinterest 纯图片 Pin，完成后自动连同标题、平台标签和简介摘要导入 Eagle。
+使用 yt-dlp 下载支持网站的视频及 Pinterest 纯图片 Pin，完成后自动将媒体与标题、平台标签和简介摘要导入 Eagle。
 
 英文：
-Download videos from sites supported by yt-dlp and image-only Pinterest Pins, then automatically import completed media into Eagle with useful metadata.
+Download videos from yt-dlp-supported sites and image-only Pinterest Pins, then import completed media into Eagle with titles, platform tags, and description excerpts.
 
 ---
 
@@ -46,8 +46,8 @@ Download videos from sites supported by yt-dlp and image-only Pinterest Pins, th
 
 浏览器 Cookie 授权与隐私说明：
 - 选用功能：浏览器 Cookie 功能属于可选设置，默认保持禁用状态，必须由用户在偏好设置中主动开启授权。
-- 数据读取与使用范围：开启授权后，若某个受支持 HTTPS 链接下载失败，yt-dlp 可能读取本机 Chrome 中与目标网站匹配的登录 Cookie，并直接发送给该网站（用于解析与下载受限或高清内容）。对于从 Pinterest 页面提取的第三方媒体来源，插件会在下载前弹窗显示确切的目标域名并请求用户逐域名同意。
-- 隐私安全保障：插件本身不收集、不存储且不向任何开发者服务器或第三方服务器上传任何 Cookie 数据，所有 Cookie 仅由本地 yt-dlp 直接发送给目标网站。插件自身发起的所有请求均限定为 HTTPS 协议，并阻断对本地地址与私有 IP 的访问；传递给 yt-dlp 的派生目标 URL 严格限制在已批准平台域名（如 Instagram、YouTube、Vimeo、TikTok）范围内。注意：上述网络边界仅覆盖插件自身发起的请求，不覆盖 yt-dlp 子进程自身的 DNS 解析、重定向跟随与媒体分片请求。
+- 数据读取与使用范围：开启此功能后，若受支持的 HTTPS 链接下载失败，插件会在首次为目标域名使用 Cookie 前显示该域名并请求确认。确认后，本地运行的 yt-dlp 可能读取本机 Chrome 中与相关网站匹配的登录 Cookie，并在获取内容所需的请求中使用；请求可能到达相关网站、内容服务器，以及重定向所到达的服务。对于从 Pinterest 页面提取的第三方媒体来源，插件也会逐域名请求确认。
+- 隐私与网络边界：插件没有开发者运营或居间收集 Cookie 的服务器。插件自身发起的请求限定为 HTTPS，并阻断对本地地址与私有 IP 的访问；传递给 yt-dlp 的派生目标 URL 限制在已批准的平台域名（如 Instagram、YouTube、Vimeo、TikTok）范围内。这些限制只覆盖插件自身发起的请求；yt-dlp 子进程会自行进行 DNS 解析、跟随重定向并请求媒体分片。
 
 依赖管理与安装流程：
 - 插件由 yt-dlp（视频解析与提取）与 FFmpeg（音视频合并与转码）提供核心支持。
@@ -69,7 +69,7 @@ How to use:
 5. Click the Download button next to the input field; the task is added to the download queue (up to 3 concurrent downloads).
 6. When a download completes, the media is imported into Eagle automatically, together with its title, a platform tag, and a description excerpt.
 
-Video Downloader uses yt-dlp to download videos from supported sites. It also downloads image-only Pinterest Pins and imports completed media into Eagle. Imported items include the title, a platform tag, and up to 500 characters of the description. Saving the original page as the Eagle data source is enabled by default and can be turned off in Preferences. Key features include downloading supported videos, downloading image-only Pinterest Pins, setting maximum resolution and frame rate, and automatically importing completed media into Eagle. First-time setup requires yt-dlp and Eagle's official FFmpeg plugin, plus an internet connection. Chrome Cookie access is optional and disabled by default. If enabled, yt-dlp may read Chrome login Cookies matching the target website and retry after a download from any supported HTTPS URL fails. The plugin does not use a developer-operated or intermediary collection server for Cookies; matching Cookies are sent by yt-dlp directly to the target website. For third-party sources extracted from Pinterest Pins, the plugin shows a per-domain prompt with the exact domain name before using Cookies.
+Video Downloader uses yt-dlp to download videos from supported sites. It also downloads image-only Pinterest Pins and imports completed media into Eagle. Imported items include the title, a platform tag, and up to 500 characters of the description. Saving the original page as the Eagle data source is enabled by default and can be turned off in Preferences. Key features include downloading supported videos, downloading image-only Pinterest Pins, setting maximum resolution and frame rate, and automatically importing completed media into Eagle. First-time setup requires yt-dlp and Eagle's official FFmpeg plugin, plus an internet connection.
 
 Built with the 3.0.0 design system featuring dedicated Preferences and Dependency Management tabs:
 
@@ -83,8 +83,8 @@ Smart Platform Extraction:
 
 Browser Cookie Usage & Privacy Disclosure:
 - Optional Feature: Browser cookie access is strictly optional, disabled by default, and requires explicit user opt-in in the Preferences tab.
-- Data Access & Scope: When enabled by the user, if a download from any supported HTTPS URL fails, yt-dlp may read Chrome login cookies matching that site and retry. For third-party media sources extracted from Pinterest Pins, the plugin shows a per-domain prompt displaying the exact domain name and requests explicit consent before using cookies.
-- Privacy & Security: The plugin does not collect, store, or upload cookie data to any developer-operated or third-party servers. All cookies are sent by yt-dlp directly to the target website only. All requests initiated by the plugin itself are restricted to HTTPS and block local and private IP addresses. Derived target URLs passed to yt-dlp are strictly limited to approved platform domains (e.g. Instagram, YouTube, Vimeo, TikTok). Note: the above network boundary applies only to requests initiated by the plugin itself, and does not cover yt-dlp's own DNS resolution, redirect following, or media segment requests.
+- Data Access & Scope: After the feature is enabled, if a download from a supported HTTPS URL fails, the plugin shows the target domain and asks for confirmation before first using cookies for that domain. Once confirmed, locally running yt-dlp may read matching Chrome login cookies and use them in requests needed to retrieve content from the relevant website, content servers, or services reached through redirects. For third-party media sources extracted from Pinterest Pins, the plugin also requests consent for each domain.
+- Privacy & Network Scope: The plugin has no developer-operated or intermediary cookie-collection server. Requests initiated by the plugin itself use HTTPS and block local and private IP addresses. Derived target URLs passed to yt-dlp are limited to approved platform domains (e.g. Instagram, YouTube, Vimeo, TikTok). These restrictions apply to the plugin's own requests; yt-dlp performs its own DNS resolution, follows redirects, and requests media segments.
 
 Dependency Management & Setup Flow:
 - Powered by yt-dlp (video extraction engine) and FFmpeg (audio/video merging and transcoding).

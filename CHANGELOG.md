@@ -16,8 +16,8 @@
 - 纯图片 Pin 自动获取高清原图
 
 新增浏览器 Cookie 授权（可选，默认关闭）：
-- 需用户在偏好设置中主动开启；开启后若某受支持 HTTPS 链接下载失败，yt-dlp 可能读取 Chrome 中与目标网站匹配的登录 Cookie 并直接发送给该网站重试
-- 每个目标域名首次使用 Cookie 前均弹窗显示确切域名并请求授权；Cookie 不经开发者或任何中间服务器
+- 需用户在偏好设置中主动开启；下载失败时，经目标域名确认后，本地 yt-dlp 可能读取匹配的 Chrome 登录 Cookie，并在相关网站、内容服务器或重定向所到达服务的请求中使用
+- 每个目标域名首次使用 Cookie 前均弹窗显示确切域名并请求授权；插件没有开发者运营的 Cookie 收集服务器
 
 依赖管理调整：
 - FFmpeg 改为依赖 Eagle 官方 FFmpeg 插件，未安装时可一键跳转应用商店（不再自行下载 FFmpeg）
@@ -47,7 +47,7 @@ New Pinterest Support:
 
 New Browser Cookie Authorization (optional, off by default):
 - Requires explicit opt-in in Preferences; when enabled, if a download from any supported HTTPS URL fails, yt-dlp may read Chrome cookies matching that site and retry
-- A per-domain consent prompt shows the exact domain before using cookies for any site; cookies are sent by yt-dlp directly to the target site, never to a developer server
+- A per-domain consent prompt shows the exact domain before use; locally running yt-dlp may use matching cookies in requests to the relevant website, content servers, or services reached through redirects. The plugin has no developer-operated cookie-collection server
 
 Dependency Management Changes:
 - FFmpeg now requires the Eagle Official FFmpeg Plugin; a one-click link to the store is shown if it is not installed (no longer downloads FFmpeg automatically)
