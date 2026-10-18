@@ -13,45 +13,8 @@ const { getYtDlpPath, getFfmpegPath, BIN_DIR, downloadYtDlp } = require("./binar
 const { validateUrl, secureHttpsGet } = require("./net-guard");
 const siteAdapters = require("./sites");
 
-// Cookie 显式授权状态
-let cookieConsentGranted = false;
-// 派生域名 Cookie 弹窗确认函数（由 plugin.js 注入 ui.requestCookieConsentDialog）
-let cookieConsentPrompt = null;
 let maxResolution = "auto";
 let maxFramerate = "auto";
-
-function setCookieConsent(granted) {
-  cookieConsentGranted = Boolean(granted);
-}
-
-function hasCookieConsent() {
-  return cookieConsentGranted;
-}
-
-/**
- * 注入派生域名 Cookie 确认函数（异步，显示弹窗并等待用户操作）。
- * fn: (domain: string, kind: string) => Promise<boolean>
- */
-function setCookieConsentPrompt(fn) {
-  cookieConsentPrompt = fn;
-}
-
-/**
- * 检查是否可以为指定 URL 的目标域名使用 Chrome Cookie，
- * 并在需要时通过弹窗向用户请求该域名的显式授权。
- * 整合「开关是否开启」+「弹窗确认」+「会话缓存」三重判定，
- * 适配器统一调用此函数，不应再直接判断 hasCookieConsent()。
- * @param {string} url   目标 URL（用于提取 hostname）
- * @param {string} [kind='direct']  'direct'（用户输入的链接）| 'derived'（Pinterest 派生源）
- * @returns {Promise<boolean>}  true = 已授权可带 Cookie 重试
- */
-async function authorizeCookies(url, kind = 'direct') {
-  if (!hasCookieConsent()) return false;
-  if (typeof cookieConsentPrompt !== 'function') return false;
-  let hostname;
-  try { hostname = new URL(url).hostname; } catch { return false; }
-  return await cookieConsentPrompt(hostname, kind);
-}
 
 function setQualityPrefs({ resolution = "auto", framerate = "auto" } = {}) {
   maxResolution = resolution || "auto";
@@ -198,8 +161,6 @@ function execYtDlp(args, onProgress, onOutput, options = {}) {
               onProgress,
               onOutput,
               execYtDlp,
-              hasCookieConsent,
-              authorizeCookies,
               getSiteArgsForUrl: siteAdapters.getSiteArgs,
               url: targetUrl,
             });
@@ -298,18 +259,7 @@ async function getVideoInfo(url) {
   }
 
   const args = ["--dump-json", "--no-warnings", ...siteAdapters.getSiteArgs(url), url];
-
-  let output;
-  try {
-    output = await execYtDlp(args, null, null, { targetUrl: url });
-  } catch (err) {
-    if (await authorizeCookies(url, 'direct')) {
-      const cookieArgs = [...args, "--cookies-from-browser", "chrome"];
-      output = await execYtDlp(cookieArgs, null, null, { allowRecovery: false, targetUrl: url });
-    } else {
-      throw err;
-    }
-  }
+  const output = await execYtDlp(args, null, null, { targetUrl: url });
 
   return parseYtDlpOutput(output, url);
 }
@@ -494,10 +444,6 @@ module.exports = {
   downloadVideo,
   getVideoInfo,
   cleanup,
-  setCookieConsent,
-  hasCookieConsent,
-  authorizeCookies,
-  setCookieConsentPrompt,
   setQualityPrefs,
   buildFormatSelector,
 };

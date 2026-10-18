@@ -14,10 +14,10 @@
 ## 简短描述（一句话）
 
 中文：
-使用 yt-dlp 下载支持网站的视频及 Pinterest 纯图片 Pin，完成后自动将媒体与标题、平台标签和简介摘要导入 Eagle。
+使用 yt-dlp 下载支持网站的视频，及 Pinterest、Dribbble 等设计平台的视频与图片，完成后自动将媒体与标题、平台标签和简介摘要导入 Eagle。
 
 英文：
-Download videos from yt-dlp-supported sites and image-only Pinterest Pins, then import completed media into Eagle with titles, platform tags, and description excerpts.
+Download videos from yt-dlp-supported sites, as well as Pinterest and Dribbble media, then import completed files into Eagle with titles, platform tags, and description excerpts.
 
 ---
 
@@ -27,12 +27,12 @@ Download videos from yt-dlp-supported sites and image-only Pinterest Pins, then 
 
 1. 首次使用时，在插件的「依赖管理」页安装 yt-dlp，并安装 Eagle 官方 FFmpeg 插件。
 2. 依赖安装完成后自动进入主界面。
-3. 复制受支持网站的 HTTPS 媒体链接（视频页面或 Pinterest 图钉链接）。
+3. 复制受支持网站的 HTTPS 媒体链接（视频页面、Pinterest 图钉或 Dribbble 作品链接）。
 4. 将链接粘贴到主界面顶部的输入框。
 5. 点击输入框右侧的「下载」按钮，任务会加入下载队列（最多 3 个并发）。
 6. 下载完成后，媒体文件会自动导入 Eagle，并附带标题、平台标签与简介摘要。
 
-支持从 YouTube、Twitter / X、TikTok、Bilibili、Instagram、Pinterest、Vimeo 等 yt-dlp 支持的网站下载视频，同时支持下载 Pinterest 纯图片 Pin，并自动导入到 Eagle。导入时自动保存视频标题、平台解析标签与简介摘要（截取前 500 字符）；当用户在偏好设置中开启「自动设置 Eagle 数据来源」选项时，将同步写入原始网页链接。
+支持从 YouTube、Twitter / X、TikTok、Bilibili、Instagram、Pinterest、Dribbble、Vimeo 等 yt-dlp 支持的网站下载视频，同时支持下载 Pinterest 纯图片 Pin 与 Dribbble 设计作品原图，并自动导入到 Eagle。导入时自动保存视频标题、平台解析标签与简介摘要（截取前 500 字符）；当用户在偏好设置中开启「自动设置 Eagle 数据来源」选项时，将同步写入原始网页链接。
 
 采用全新的 3.0.0 界面设计规范，提供独立的偏好设置与依赖管理分栏：
 
@@ -42,12 +42,8 @@ Download videos from yt-dlp-supported sites and image-only Pinterest Pins, then 
 
 智能平台解析：
 - 新增 Pinterest 图钉（视频与图片）下载，针对转存内容自动前置提取第三方源地址（如 Instagram、YouTube、TikTok、Vimeo 等原始来源）并优先下载源视频；纯图片 Pin 自动获取高清原图。
+- 新增 Dribbble 作品（视频与图片）解析与下载支持，自动提取 CDN 原始高清 MP4 视频与设计图片。
 - 站点适配器模块化架构，全面提升各平台解析稳定性。
-
-浏览器 Cookie 授权与隐私说明：
-- 选用功能：浏览器 Cookie 功能属于可选设置，默认保持禁用状态，必须由用户在偏好设置中主动开启授权。
-- 数据读取与使用范围：开启此功能后，若受支持的 HTTPS 链接下载失败，插件会在首次为目标域名使用 Cookie 前显示该域名并请求确认。确认后，本地运行的 yt-dlp 可能读取本机 Chrome 中与相关网站匹配的登录 Cookie，并在获取内容所需的请求中使用；请求可能到达相关网站、内容服务器，以及重定向所到达的服务。对于从 Pinterest 页面提取的第三方媒体来源，插件也会逐域名请求确认。
-- 隐私与网络边界：插件没有开发者运营或居间收集 Cookie 的服务器。插件自身发起的请求限定为 HTTPS，并阻断对本地地址与私有 IP 的访问；传递给 yt-dlp 的派生目标 URL 限制在已批准的平台域名（如 Instagram、YouTube、Vimeo、TikTok）范围内。这些限制只覆盖插件自身发起的请求；yt-dlp 子进程会自行进行 DNS 解析、跟随重定向并请求媒体分片。
 
 依赖管理与安装流程：
 - 插件由 yt-dlp（视频解析与提取）与 FFmpeg（音视频合并与转码）提供核心支持。
@@ -64,12 +60,12 @@ How to use:
 
 1. On first launch, install yt-dlp from the Dependencies tab and install Eagle's official FFmpeg plugin.
 2. Once both dependencies are ready, the main view opens automatically.
-3. Copy a supported HTTPS media URL (a video page URL, or a Pinterest Pin URL).
+3. Copy a supported HTTPS media URL (a video page URL, Pinterest Pin URL, or Dribbble shot URL).
 4. Paste the URL into the input field at the top of the main view.
 5. Click the Download button next to the input field; the task is added to the download queue (up to 3 concurrent downloads).
 6. When a download completes, the media is imported into Eagle automatically, together with its title, a platform tag, and a description excerpt.
 
-Video Downloader uses yt-dlp to download videos from supported sites. It also downloads image-only Pinterest Pins and imports completed media into Eagle. Imported items include the title, a platform tag, and up to 500 characters of the description. Saving the original page as the Eagle data source is enabled by default and can be turned off in Preferences. Key features include downloading supported videos, downloading image-only Pinterest Pins, setting maximum resolution and frame rate, and automatically importing completed media into Eagle. First-time setup requires yt-dlp and Eagle's official FFmpeg plugin, plus an internet connection.
+Video Downloader uses yt-dlp to download videos from supported sites, and also downloads image-only Pinterest Pins and Dribbble design media, importing completed files into Eagle. Imported items include the title, a platform tag, and up to 500 characters of the description. Saving the original page as the Eagle data source is enabled by default and can be turned off in Preferences. Key features include downloading supported videos, downloading Pinterest Pins and Dribbble shots, setting maximum resolution and frame rate, and automatically importing completed media into Eagle. First-time setup requires yt-dlp and Eagle's official FFmpeg plugin, plus an internet connection.
 
 Built with the 3.0.0 design system featuring dedicated Preferences and Dependency Management tabs:
 
@@ -79,12 +75,8 @@ Customizable Preferences:
 
 Smart Platform Extraction:
 - Added Pinterest pin (video & image) support with automatic extraction of embedded third-party source URLs (e.g., original Instagram, YouTube, TikTok, or Vimeo sources) to download the original video; automatically fetches full-resolution images for image pins.
+- Added Dribbble shot (video & image) extraction and download support, automatically extracting original high-res MP4 video and artwork from Dribbble CDN.
 - Modularized site adapters for improved maintainability and extraction performance across platforms.
-
-Browser Cookie Usage & Privacy Disclosure:
-- Optional Feature: Browser cookie access is strictly optional, disabled by default, and requires explicit user opt-in in the Preferences tab.
-- Data Access & Scope: After the feature is enabled, if a download from a supported HTTPS URL fails, the plugin shows the target domain and asks for confirmation before first using cookies for that domain. Once confirmed, locally running yt-dlp may read matching Chrome login cookies and use them in requests needed to retrieve content from the relevant website, content servers, or services reached through redirects. For third-party media sources extracted from Pinterest Pins, the plugin also requests consent for each domain.
-- Privacy & Network Scope: The plugin has no developer-operated or intermediary cookie-collection server. Requests initiated by the plugin itself use HTTPS and block local and private IP addresses. Derived target URLs passed to yt-dlp are limited to approved platform domains (e.g. Instagram, YouTube, Vimeo, TikTok). These restrictions apply to the plugin's own requests; yt-dlp performs its own DNS resolution, follows redirects, and requests media segments.
 
 Dependency Management & Setup Flow:
 - Powered by yt-dlp (video extraction engine) and FFmpeg (audio/video merging and transcoding).

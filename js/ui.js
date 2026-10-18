@@ -258,19 +258,15 @@ function switchSubpageTab(tabName) {
  * @param {Object} opts
  * @param {'settings' | 'dependencies'} opts.tab - 初始标签页
  * @param {boolean} opts.gating - 是否为「门槛模式」（依赖未就绪，强制停留在此页，隐藏返回按钮）
- * @param {boolean} opts.cookieConsentPref - Cookie 授权状态
  * @param {boolean} opts.autoAddSourcePref - 是否自动设置 Eagle 数据来源
  */
-function showDepsPage({ tab = "settings", gating = false, cookieConsentPref = false, autoAddSourcePref = true, maxResolutionPref = "auto", maxFrameratePref = "auto" } = {}) {
+function showDepsPage({ tab = "settings", gating = false, autoAddSourcePref = true, maxResolutionPref = "auto", maxFrameratePref = "auto" } = {}) {
   // 填充静态文本
   const tabBtnSettings = document.getElementById("tabBtnSettings");
   const tabBtnDeps = document.getElementById("tabBtnDeps");
   const autoAddLabel = document.getElementById("autoAddSourceLabel");
   const autoAddHint = document.getElementById("autoAddSourceHint");
   const autoAddToggle = document.getElementById("autoAddSourceToggle");
-  const cookieLabel = document.getElementById("cookieConsentLabel");
-  const cookieHint = document.getElementById("cookieConsentHint");
-  const cookieToggle = document.getElementById("cookieConsentToggle");
   const maxResLabel = document.getElementById("maxResolutionLabel");
   const maxResHint = document.getElementById("maxResolutionHint");
   const maxResSelect = document.getElementById("maxResolutionSelect");
@@ -286,9 +282,6 @@ function showDepsPage({ tab = "settings", gating = false, cookieConsentPref = fa
   if (autoAddLabel) autoAddLabel.textContent = i18next.t("deps.autoAddSourceLabel");
   if (autoAddHint) autoAddHint.textContent = i18next.t("deps.autoAddSourceHint");
   if (autoAddToggle) autoAddToggle.checked = autoAddSourcePref;
-  if (cookieLabel) cookieLabel.textContent = i18next.t("deps.cookieConsentLabel");
-  if (cookieHint) cookieHint.textContent = i18next.t("deps.cookieConsentHint");
-  if (cookieToggle) cookieToggle.checked = cookieConsentPref;
 
   if (maxResLabel) maxResLabel.textContent = i18next.t("deps.maxResolutionLabel");
   if (maxResHint) maxResHint.textContent = i18next.t("deps.maxResolutionHint");
@@ -495,96 +488,6 @@ function updateFfmpegCard(state, data = {}) {
   }
 }
 
-/**
- * 显示派生域名 Cookie 使用确认弹窗，等待用户操作后 resolve。
- *
- * 行为：
- * - 同一域名在本次会话中首次被允许后缓存，后续直接 resolve(true) 不再打扰；
- * - 拒绝不缓存（仅本次不重试），下次同域名仍会再次询问；
- * - 串行化：同时触发多个弹窗时排队依次展示，不堆叠。
- *
- * @param {string} domain  确切的目标域名（如 "instagram.com"）
- * @returns {Promise<boolean>}  true = 用户允许，false = 用户拒绝或无法显示弹窗
- */
-const _consentApproved = new Set();
-let _consentQueue = Promise.resolve();
-
-function requestCookieConsentDialog(domain, kind = 'derived') {
-  // 已授权的域名直接放行
-  if (_consentApproved.has(domain)) return Promise.resolve(true);
-
-  // 串行化：排入队列
-  const result = _consentQueue.then(() => _showConsentDialog(domain, kind));
-  // 让队列持续推进（即使 _showConsentDialog 本次 reject 也不阻塞后续）
-  _consentQueue = result.then(() => {}, () => {});
-  return result;
-}
-
-function _showConsentDialog(domain, kind = 'derived') {
-  return new Promise((resolve) => {
-    const overlay = document.getElementById('consentOverlay');
-    const titleEl = document.getElementById('consentTitle');
-    const bodyEl = document.getElementById('consentBody');
-    const allowBtn = document.getElementById('consentAllowBtn');
-    const denyBtn = document.getElementById('consentDenyBtn');
-
-    if (!overlay || !titleEl || !bodyEl || !allowBtn || !denyBtn) {
-      // 元素不存在（测试环境），直接拒绝
-      resolve(false);
-      return;
-    }
-
-    // 渲染文案（使用 textContent 防止 XSS，域名单独用 span 高亮）
-    titleEl.textContent = i18next.t('consent.title');
-    // 说明文案含域名插值，分段拼接保证安全
-    bodyEl.textContent = '';
-    const prefixKey = kind === 'direct' ? 'consent.bodyPrefixDirect' : 'consent.bodyPrefixDerived';
-    const prefix = document.createTextNode(i18next.t(prefixKey) + ' ');
-    const domainSpan = document.createElement('span');
-    domainSpan.className = 'consent-domain';
-    domainSpan.textContent = domain;
-    const suffix = document.createTextNode(' ' + i18next.t('consent.bodySuffix'));
-    bodyEl.appendChild(prefix);
-    bodyEl.appendChild(domainSpan);
-    bodyEl.appendChild(suffix);
-
-    allowBtn.textContent = i18next.t('consent.allow');
-    denyBtn.textContent = i18next.t('consent.deny');
-
-    overlay.classList.remove('hidden');
-
-    const cleanup = () => {
-      overlay.classList.add('hidden');
-      allowBtn.removeEventListener('click', onAllow);
-      denyBtn.removeEventListener('click', onDeny);
-      document.removeEventListener('keydown', onKeyDown);
-      overlay.removeEventListener('click', onOverlayClick);
-    };
-
-    const onAllow = () => {
-      _consentApproved.add(domain);
-      cleanup();
-      resolve(true);
-    };
-    const onDeny = () => {
-      cleanup();
-      resolve(false);
-    };
-    // Escape 键或点击遮罩视为拒绝（防止弹窗永久悬挂死锁队列）
-    const onKeyDown = (e) => {
-      if (e.key === 'Escape') onDeny();
-    };
-    const onOverlayClick = (e) => {
-      if (e.target === overlay) onDeny();
-    };
-
-    allowBtn.addEventListener('click', onAllow, { once: true });
-    denyBtn.addEventListener('click', onDeny, { once: true });
-    document.addEventListener('keydown', onKeyDown);
-    overlay.addEventListener('click', onOverlayClick);
-  });
-}
-
 module.exports = {
   updateTheme,
   showMainUI,
@@ -602,5 +505,4 @@ module.exports = {
   updateDepsBadge,
   updateYtdlpCard,
   updateFfmpegCard,
-  requestCookieConsentDialog,
 };

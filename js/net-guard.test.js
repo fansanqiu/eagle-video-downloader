@@ -176,3 +176,16 @@ assert.strictEqual(
 );
 
 console.log('downloader: format selector checks passed');
+
+// Test dribbble adapter
+const dribbbleAdapter = require('./sites/dribbble');
+assert(dribbbleAdapter.match('https://dribbble.com/shots/27637405-AI-Phone-OS-thinking-mode'), 'dribbble shot match');
+assert(dribbbleAdapter.match('https://www.dribbble.com/shots/12345'), 'www dribbble match');
+assert(dribbbleAdapter.match('https://cdn.dribbble.com/userupload/123/file/test.mp4'), 'cdn dribbble match');
+assert(!dribbbleAdapter.match('https://notdribbble.com/shots/123'), 'non-dribbble should not match');
+assert.strictEqual(
+  dribbbleAdapter.normalizeUrl('https://dribbble.com/shots/12345?utm_source=test#comments'),
+  'https://dribbble.com/shots/12345',
+  'dribbble normalizeUrl removes query and hash'
+);
+console.log('sites/dribbble: adapter match and normalize checks passed');

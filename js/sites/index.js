@@ -7,6 +7,7 @@ const twitter = require('./twitter');
 const vimeo = require('./vimeo');
 const instagram = require('./instagram');
 const pinterest = require('./pinterest');
+const dribbble = require('./dribbble');
 
 const adapters = [
   bilibili,
@@ -14,6 +15,7 @@ const adapters = [
   vimeo,
   instagram,
   pinterest,
+  dribbble,
 ];
 
 function findAdapter(url) {

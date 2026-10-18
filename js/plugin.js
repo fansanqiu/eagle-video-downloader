@@ -37,29 +37,11 @@ async function importToEagle(videoPath, metadata, sourceUrl) {
   }
 }
 
-// Cookie 显式授权存储 key
-const COOKIE_CONSENT_KEY = "eagle-video-downloader.cookieConsent";
 // 自动设置 Eagle 数据来源 key
 const AUTO_ADD_SOURCE_KEY = "eagle-video-downloader.autoAddSource";
 // 清晰度与帧率偏好存储 key
 const MAX_RESOLUTION_KEY = "eagle-video-downloader.maxResolution";
 const MAX_FRAMERATE_KEY = "eagle-video-downloader.maxFramerate";
-
-/**
- * 获取用户是否授权使用浏览器 Cookie (默认 false)
- */
-function getCookieConsentPref() {
-  const val = localStorage.getItem(COOKIE_CONSENT_KEY);
-  return val === "true";
-}
-
-/**
- * 保存用户是否授权使用浏览器 Cookie
- */
-function setCookieConsentPref(value) {
-  localStorage.setItem(COOKIE_CONSENT_KEY, String(value));
-  downloader.setCookieConsent(Boolean(value));
-}
 
 /**
  * 获取用户是否自动设置 Eagle 数据来源 (默认 true)
@@ -159,9 +141,6 @@ eagle.onPluginCreate(async (plugin) => {
   applyTranslations();
   ui.updateTheme();
   setupEventListeners();
-  downloader.setCookieConsent(getCookieConsentPref());
-  // 注入派生域名 Cookie 弹窗确认函数（保持 downloader 不直接依赖 ui）
-  downloader.setCookieConsentPrompt(ui.requestCookieConsentDialog);
   downloader.setQualityPrefs({
     resolution: getMaxResolutionPref(),
     framerate: getMaxFrameratePref(),
@@ -199,14 +178,6 @@ function setupEventListeners() {
   if (autoAddToggle) {
     autoAddToggle.addEventListener("change", (e) => {
       setAutoAddSourcePref(e.target.checked);
-    });
-  }
-
-  // Cookie 授权切换
-  const cookieToggle = document.getElementById("cookieConsentToggle");
-  if (cookieToggle) {
-    cookieToggle.addEventListener("change", (e) => {
-      setCookieConsentPref(e.target.checked);
     });
   }
 
@@ -298,7 +269,6 @@ async function initializeBinaries() {
   ui.showDepsPage({
     tab: "dependencies",
     gating: true,
-    cookieConsentPref: getCookieConsentPref(),
     autoAddSourcePref: getAutoAddSourcePref(),
     maxResolutionPref: getMaxResolutionPref(),
     maxFrameratePref: getMaxFrameratePref(),
@@ -384,6 +354,35 @@ function processQueue() {
 }
 
 /**
+ * 将下载失败的底层异常转换为对用户友好的错误提示
+ */
+function formatDownloadError(error, url) {
+  if (error?.code === 'ENETBOUNDARY') {
+    return i18next.t("error.blockedAddress");
+  }
+  if (isNetworkError(error)) {
+    return i18next.t("error.networkUnavailable");
+  }
+  const msg = error?.message || '';
+  if (/Unsupported URL/i.test(msg)) {
+    try {
+      const hostname = new URL(url).hostname.toLowerCase();
+      if (hostname === 'dribbble.com' || hostname.endsWith('.dribbble.com')) {
+        return i18next.t("error.dribbbleProtected");
+      }
+    } catch {}
+    return i18next.t("error.unsupportedUrl");
+  }
+  if (/Video unavailable|This video is unavailable|Unable to download video/i.test(msg)) {
+    return i18next.t("error.videoUnavailable");
+  }
+  if (/Private video|This video is private|Sign in to confirm/i.test(msg)) {
+    return i18next.t("error.privateVideo");
+  }
+  return msg || i18next.t("download.failed");
+}
+
+/**
  * 执行单个下载任务
  */
 async function executeDownload(item) {
@@ -419,13 +418,7 @@ async function executeDownload(item) {
     }
   } catch (error) {
     item.state = "error";
-    if (error?.code === 'ENETBOUNDARY') {
-      item.error = i18next.t("error.blockedAddress");
-    } else if (isNetworkError(error)) {
-      item.error = i18next.t("error.networkUnavailable");
-    } else {
-      item.error = error.message || i18next.t("download.failed");
-    }
+    item.error = formatDownloadError(error, item.url);
     ui.updateQueueItem(item.id, item);
   } finally {
     activeCount--;
@@ -480,7 +473,6 @@ async function checkForUpdateAndNotify() {
 function openDepsPage() {
   ui.showDepsPage({
     tab: "settings",
-    cookieConsentPref: getCookieConsentPref(),
     autoAddSourcePref: getAutoAddSourcePref(),
     maxResolutionPref: getMaxResolutionPref(),
     maxFrameratePref: getMaxFrameratePref(),

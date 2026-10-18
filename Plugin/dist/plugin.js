@@ -3084,16 +3084,9 @@ var require_instagram = __commonJS({
         "User-Agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
       ];
     }
-    async function handleExecFailure({ args, onProgress, onOutput, execYtDlp, authorizeCookies, url }) {
-      if (!args.includes("--cookies-from-browser") && await authorizeCookies(url, "direct")) {
-        return await execYtDlp([...args, "--cookies-from-browser", "chrome"], onProgress, onOutput, { allowRecovery: false, targetUrl: url });
-      }
-      return null;
-    }
     module2.exports = {
       match,
-      getSiteArgs,
-      handleExecFailure
+      getSiteArgs
     };
   }
 });
@@ -3317,7 +3310,7 @@ var require_pinterest = __commonJS({
       }
       return null;
     }
-    async function handleExecFailure({ stderr, args, onProgress, onOutput, execYtDlp, hasCookieConsent, authorizeCookies, getSiteArgsForUrl, url }) {
+    async function handleExecFailure({ stderr, args, onProgress, onOutput, execYtDlp, getSiteArgsForUrl, url }) {
       const isNoFormats = stderr.includes("No video formats found") || stderr.includes("[Pinterest]");
       if (!isNoFormats)
         return null;
@@ -3333,7 +3326,6 @@ var require_pinterest = __commonJS({
           return false;
         }
       })();
-      let extractedSourceUrl = null;
       if (!alreadyTriedSource) {
         let sourceUrl = await extractPinterestPinData(url).then((d) => (d == null ? void 0 : d.sourceUrl) ?? null);
         if (sourceUrl) {
@@ -3344,28 +3336,15 @@ var require_pinterest = __commonJS({
           } catch {
             return null;
           }
-          extractedSourceUrl = sourceUrl;
           const oldSiteArgs = getSiteArgs();
-          const cleanedArgs = args.filter((a) => !oldSiteArgs.includes(a) && a !== "--cookies-from-browser" && a !== "chrome");
+          const cleanedArgs = args.filter((a) => !oldSiteArgs.includes(a));
           const newSiteArgs = getSiteArgsForUrl(sourceUrl);
           const newArgs = cleanedArgs.map((a) => a === url ? sourceUrl : a);
           newArgs.push(...newSiteArgs);
           try {
             return await execYtDlp(newArgs, onProgress, onOutput, { allowRecovery: false, targetUrl: sourceUrl });
           } catch (e) {
-            if (await authorizeCookies(sourceUrl, "derived")) {
-              try {
-                return await execYtDlp([...newArgs, "--cookies-from-browser", "chrome"], onProgress, onOutput, { allowRecovery: false, targetUrl: sourceUrl });
-              } catch (e2) {
-              }
-            }
           }
-        }
-      }
-      if (!extractedSourceUrl && !args.includes("--cookies-from-browser") && await authorizeCookies(url, "direct")) {
-        try {
-          return await execYtDlp([...args, "--cookies-from-browser", "chrome"], onProgress, onOutput, { allowRecovery: false, targetUrl: url });
-        } catch (e) {
         }
       }
       return null;
@@ -3384,6 +3363,165 @@ var require_pinterest = __commonJS({
   }
 });
 
+// js/sites/dribbble.js
+var require_dribbble = __commonJS({
+  "js/sites/dribbble.js"(exports2, module2) {
+    var { validateUrl, assertHostAllowed, secureHttpsGet } = require_net_guard();
+    var i18next3 = require_i18next();
+    var ALLOWED_DOMAINS = ["dribbble.com", "cdn.dribbble.com"];
+    function match(url) {
+      try {
+        const host = new URL(url).hostname.replace(/^www\./, "").toLowerCase();
+        return host === "dribbble.com" || host.endsWith(".dribbble.com");
+      } catch {
+        return false;
+      }
+    }
+    function normalizeUrl(url) {
+      try {
+        const u = new URL(url);
+        if (u.hostname === "dribbble.com" || u.hostname === "www.dribbble.com") {
+          return `${u.protocol}//${u.host}${u.pathname}`;
+        }
+        return url;
+      } catch {
+        return url;
+      }
+    }
+    function getSiteArgs() {
+      return [
+        "--referer",
+        "https://dribbble.com/",
+        "--add-header",
+        "User-Agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+      ];
+    }
+    function parseJinaResponse(raw) {
+      let title = "Dribbble Shot";
+      let description = "";
+      let content = raw;
+      let ogImage = null;
+      let creator = "Dribbble";
+      if (raw.trim().startsWith("{")) {
+        try {
+          const json = JSON.parse(raw);
+          const d = json.data || {};
+          const meta = d.metadata || {};
+          title = d.title || meta["og:title"] || title;
+          description = d.description || meta["description"] || "";
+          content = d.content || "";
+          creator = meta["twitter:creator"] || creator;
+          if (meta["og:image"]) {
+            ogImage = Array.isArray(meta["og:image"]) ? meta["og:image"][0] : meta["og:image"];
+          }
+        } catch {
+        }
+      } else {
+        const titleMatch = raw.match(/^Title:\s*(.+)$/m);
+        if (titleMatch)
+          title = titleMatch[1].trim();
+      }
+      const videoMatch = content.match(/https:\/\/cdn\.dribbble\.com\/(?:userupload|users)\/[^\s\)"\x27]+\.mp4/i) || raw.match(/https:\/\/cdn\.dribbble\.com\/(?:userupload|users)\/[^\s\)"\x27]+\.mp4/i);
+      const imgMatch = content.match(/https:\/\/cdn\.dribbble\.com\/userupload\/[^\s\)"\x27]+\.(?:jpg|jpeg|png|webp|gif)/i) || raw.match(/https:\/\/cdn\.dribbble\.com\/userupload\/[^\s\)"\x27]+\.(?:jpg|jpeg|png|webp|gif)/i) || ogImage;
+      return {
+        title,
+        description,
+        creator,
+        videoUrl: videoMatch ? videoMatch[0] : null,
+        imageUrl: imgMatch ? typeof imgMatch === "string" ? imgMatch : imgMatch[0] : null
+      };
+    }
+    function fetchShotData(shotUrl) {
+      return new Promise(async (resolve) => {
+        try {
+          const jinaUrl = `https://r.jina.ai/${shotUrl}`;
+          await validateUrl(jinaUrl);
+          const req = await secureHttpsGet(
+            jinaUrl,
+            {
+              headers: {
+                "Accept": "application/json",
+                "X-Return-Format": "json"
+              }
+            },
+            (res) => {
+              let body = "";
+              res.on("data", (chunk) => body += chunk);
+              res.on("end", () => {
+                resolve(parseJinaResponse(body));
+              });
+            }
+          );
+          req.on("error", () => resolve(null));
+          req.setTimeout(2e4, () => {
+            req.destroy();
+            resolve(null);
+          });
+        } catch (e) {
+          resolve(null);
+        }
+      });
+    }
+    async function customGetInfo(url) {
+      try {
+        const parsed = new URL(url);
+        if (parsed.hostname.toLowerCase() === "cdn.dribbble.com") {
+          return null;
+        }
+      } catch {
+        return null;
+      }
+      if (!url.includes("/shots/")) {
+        return null;
+      }
+      const cleanUrl = normalizeUrl(url);
+      const shotData = await fetchShotData(cleanUrl);
+      if (!shotData) {
+        throw new Error(i18next3.t("error.dribbbleExtractFailed"));
+      }
+      const shotIdMatch = url.match(/\/shots\/(\d+)/);
+      const shotId = shotIdMatch ? shotIdMatch[1] : null;
+      if (shotData.videoUrl) {
+        assertHostAllowed(shotData.videoUrl, ALLOWED_DOMAINS);
+        await validateUrl(shotData.videoUrl);
+        return {
+          title: shotData.title,
+          description: shotData.description,
+          uploader: shotData.creator || "Dribbble",
+          extractor: "dribbble",
+          webpage_url: shotData.videoUrl,
+          thumbnail: shotData.imageUrl,
+          duration: 0,
+          id: shotId
+        };
+      }
+      if (shotData.imageUrl) {
+        assertHostAllowed(shotData.imageUrl, ALLOWED_DOMAINS);
+        await validateUrl(shotData.imageUrl);
+        return {
+          type: "image",
+          imageUrl: shotData.imageUrl,
+          title: shotData.title,
+          description: shotData.description,
+          duration: 0,
+          thumbnail: shotData.imageUrl,
+          uploader: shotData.creator || "Dribbble",
+          extractor: "dribbble",
+          webpage_url: url,
+          id: shotId
+        };
+      }
+      throw new Error(i18next3.t("error.dribbbleNoMedia"));
+    }
+    module2.exports = {
+      match,
+      normalizeUrl,
+      getSiteArgs,
+      customGetInfo
+    };
+  }
+});
+
 // js/sites/index.js
 var require_sites = __commonJS({
   "js/sites/index.js"(exports2, module2) {
@@ -3392,12 +3530,14 @@ var require_sites = __commonJS({
     var vimeo = require_vimeo();
     var instagram = require_instagram();
     var pinterest = require_pinterest();
+    var dribbble = require_dribbble();
     var adapters = [
       bilibili,
       twitter,
       vimeo,
       instagram,
-      pinterest
+      pinterest,
+      dribbble
     ];
     function findAdapter(url) {
       if (!url || typeof url !== "string")
@@ -3463,32 +3603,8 @@ var require_downloader = __commonJS({
     var { getYtDlpPath, getFfmpegPath, BIN_DIR, downloadYtDlp: downloadYtDlp2 } = require_binary();
     var { validateUrl, secureHttpsGet } = require_net_guard();
     var siteAdapters = require_sites();
-    var cookieConsentGranted = false;
-    var cookieConsentPrompt = null;
     var maxResolution = "auto";
     var maxFramerate = "auto";
-    function setCookieConsent(granted) {
-      cookieConsentGranted = Boolean(granted);
-    }
-    function hasCookieConsent() {
-      return cookieConsentGranted;
-    }
-    function setCookieConsentPrompt(fn) {
-      cookieConsentPrompt = fn;
-    }
-    async function authorizeCookies(url, kind = "direct") {
-      if (!hasCookieConsent())
-        return false;
-      if (typeof cookieConsentPrompt !== "function")
-        return false;
-      let hostname;
-      try {
-        hostname = new URL(url).hostname;
-      } catch {
-        return false;
-      }
-      return await cookieConsentPrompt(hostname, kind);
-    }
     function setQualityPrefs({ resolution = "auto", framerate = "auto" } = {}) {
       maxResolution = resolution || "auto";
       maxFramerate = framerate || "auto";
@@ -3604,8 +3720,6 @@ var require_downloader = __commonJS({
                   onProgress,
                   onOutput,
                   execYtDlp,
-                  hasCookieConsent,
-                  authorizeCookies,
                   getSiteArgsForUrl: siteAdapters.getSiteArgs,
                   url: targetUrl
                 });
@@ -3693,17 +3807,7 @@ var require_downloader = __commonJS({
         return customInfo;
       }
       const args = ["--dump-json", "--no-warnings", ...siteAdapters.getSiteArgs(url), url];
-      let output;
-      try {
-        output = await execYtDlp(args, null, null, { targetUrl: url });
-      } catch (err) {
-        if (await authorizeCookies(url, "direct")) {
-          const cookieArgs = [...args, "--cookies-from-browser", "chrome"];
-          output = await execYtDlp(cookieArgs, null, null, { allowRecovery: false, targetUrl: url });
-        } else {
-          throw err;
-        }
-      }
+      const output = await execYtDlp(args, null, null, { targetUrl: url });
       return parseYtDlpOutput(output, url);
     }
     function parseYtDlpOutput(output, fallbackUrl) {
@@ -3847,10 +3951,6 @@ var require_downloader = __commonJS({
       downloadVideo,
       getVideoInfo,
       cleanup,
-      setCookieConsent,
-      hasCookieConsent,
-      authorizeCookies,
-      setCookieConsentPrompt,
       setQualityPrefs,
       buildFormatSelector
     };
@@ -4047,16 +4147,13 @@ var require_ui = __commonJS({
         depsPanel == null ? void 0 : depsPanel.classList.remove("hidden");
       }
     }
-    function showDepsPage({ tab = "settings", gating = false, cookieConsentPref = false, autoAddSourcePref = true, maxResolutionPref = "auto", maxFrameratePref = "auto" } = {}) {
+    function showDepsPage({ tab = "settings", gating = false, autoAddSourcePref = true, maxResolutionPref = "auto", maxFrameratePref = "auto" } = {}) {
       var _a, _b;
       const tabBtnSettings = document.getElementById("tabBtnSettings");
       const tabBtnDeps = document.getElementById("tabBtnDeps");
       const autoAddLabel = document.getElementById("autoAddSourceLabel");
       const autoAddHint = document.getElementById("autoAddSourceHint");
       const autoAddToggle = document.getElementById("autoAddSourceToggle");
-      const cookieLabel = document.getElementById("cookieConsentLabel");
-      const cookieHint = document.getElementById("cookieConsentHint");
-      const cookieToggle = document.getElementById("cookieConsentToggle");
       const maxResLabel = document.getElementById("maxResolutionLabel");
       const maxResHint = document.getElementById("maxResolutionHint");
       const maxResSelect = document.getElementById("maxResolutionSelect");
@@ -4076,12 +4173,6 @@ var require_ui = __commonJS({
         autoAddHint.textContent = i18next.t("deps.autoAddSourceHint");
       if (autoAddToggle)
         autoAddToggle.checked = autoAddSourcePref;
-      if (cookieLabel)
-        cookieLabel.textContent = i18next.t("deps.cookieConsentLabel");
-      if (cookieHint)
-        cookieHint.textContent = i18next.t("deps.cookieConsentHint");
-      if (cookieToggle)
-        cookieToggle.checked = cookieConsentPref;
       if (maxResLabel)
         maxResLabel.textContent = i18next.t("deps.maxResolutionLabel");
       if (maxResHint)
@@ -4267,72 +4358,6 @@ var require_ui = __commonJS({
           break;
       }
     }
-    var _consentApproved = /* @__PURE__ */ new Set();
-    var _consentQueue = Promise.resolve();
-    function requestCookieConsentDialog(domain, kind = "derived") {
-      if (_consentApproved.has(domain))
-        return Promise.resolve(true);
-      const result = _consentQueue.then(() => _showConsentDialog(domain, kind));
-      _consentQueue = result.then(() => {
-      }, () => {
-      });
-      return result;
-    }
-    function _showConsentDialog(domain, kind = "derived") {
-      return new Promise((resolve) => {
-        const overlay = document.getElementById("consentOverlay");
-        const titleEl = document.getElementById("consentTitle");
-        const bodyEl = document.getElementById("consentBody");
-        const allowBtn = document.getElementById("consentAllowBtn");
-        const denyBtn = document.getElementById("consentDenyBtn");
-        if (!overlay || !titleEl || !bodyEl || !allowBtn || !denyBtn) {
-          resolve(false);
-          return;
-        }
-        titleEl.textContent = i18next.t("consent.title");
-        bodyEl.textContent = "";
-        const prefixKey = kind === "direct" ? "consent.bodyPrefixDirect" : "consent.bodyPrefixDerived";
-        const prefix = document.createTextNode(i18next.t(prefixKey) + " ");
-        const domainSpan = document.createElement("span");
-        domainSpan.className = "consent-domain";
-        domainSpan.textContent = domain;
-        const suffix = document.createTextNode(" " + i18next.t("consent.bodySuffix"));
-        bodyEl.appendChild(prefix);
-        bodyEl.appendChild(domainSpan);
-        bodyEl.appendChild(suffix);
-        allowBtn.textContent = i18next.t("consent.allow");
-        denyBtn.textContent = i18next.t("consent.deny");
-        overlay.classList.remove("hidden");
-        const cleanup = () => {
-          overlay.classList.add("hidden");
-          allowBtn.removeEventListener("click", onAllow);
-          denyBtn.removeEventListener("click", onDeny);
-          document.removeEventListener("keydown", onKeyDown);
-          overlay.removeEventListener("click", onOverlayClick);
-        };
-        const onAllow = () => {
-          _consentApproved.add(domain);
-          cleanup();
-          resolve(true);
-        };
-        const onDeny = () => {
-          cleanup();
-          resolve(false);
-        };
-        const onKeyDown = (e) => {
-          if (e.key === "Escape")
-            onDeny();
-        };
-        const onOverlayClick = (e) => {
-          if (e.target === overlay)
-            onDeny();
-        };
-        allowBtn.addEventListener("click", onAllow, { once: true });
-        denyBtn.addEventListener("click", onDeny, { once: true });
-        document.addEventListener("keydown", onKeyDown);
-        overlay.addEventListener("click", onOverlayClick);
-      });
-    }
     module2.exports = {
       updateTheme,
       showMainUI,
@@ -4349,8 +4374,7 @@ var require_ui = __commonJS({
       switchSubpageTab,
       updateDepsBadge,
       updateYtdlpCard,
-      updateFfmpegCard,
-      requestCookieConsentDialog
+      updateFfmpegCard
     };
   }
 });
@@ -4416,6 +4440,12 @@ var require_en = __commonJS({
         ytdlpExitedWithCode: "yt-dlp exited with code",
         networkUnavailable: "Network unavailable \u2014 check your connection or proxy settings and retry",
         blockedAddress: "Access blocked \u2014 this address is not allowed",
+        unsupportedUrl: "Unsupported website or link \u2014 please verify that the platform is supported",
+        dribbbleProtected: "Dribbble pages are bot-protected. Please right-click the video in your browser, copy the direct video URL (.mp4), and paste it here",
+        dribbbleExtractFailed: "Failed to extract Dribbble shot content, please check your network or copy the direct video URL from browser",
+        dribbbleNoMedia: "No downloadable video or image found in this Dribbble shot",
+        videoUnavailable: "Video is unavailable or has been removed",
+        privateVideo: "This video is private or requires sign-in",
         unknown: "Unknown"
       },
       progress: {
@@ -4435,8 +4465,6 @@ var require_en = __commonJS({
         sectionEngines: "Core Engines",
         autoAddSourceLabel: "Auto-set Eagle Data Source",
         autoAddSourceHint: "When enabled, original web URLs are automatically saved to Eagle items",
-        cookieConsentLabel: "Allow browser cookie access",
-        cookieConsentHint: "Optional; disabled by default. When enabled, if a download from any supported HTTPS URL fails, yt-dlp may read Chrome login cookies matching that site and send them directly to it. No developer or intermediary server is involved. Pinterest-derived third-party sources will prompt you per domain.",
         maxResolutionLabel: "Max Resolution",
         maxResolutionHint: "Limit the maximum video resolution. If not available, automatically falls back to the highest available resolution.",
         maxFramerateLabel: "Max Frame Rate",
@@ -4474,14 +4502,6 @@ var require_en = __commonJS({
         versionInstalled: "Version: {{version}}",
         versionUpdate: "{{from}} \u2192 {{to}}",
         progressText: "Downloading... {{percent}}%"
-      },
-      consent: {
-        title: "Cookie Access Requested",
-        bodyPrefixDirect: "About to download from",
-        bodyPrefixDerived: "This Pinterest Pin contains a video hosted on",
-        bodySuffix: "Allow yt-dlp to use your Chrome cookies to download it? Cookies are sent by yt-dlp directly to that site and its content servers, never to a developer server.",
-        allow: "Allow",
-        deny: "Deny"
       }
     };
   }
@@ -4548,6 +4568,12 @@ var require_zh_CN = __commonJS({
         ytdlpExitedWithCode: "yt-dlp \u9000\u51FA\uFF0C\u4EE3\u7801",
         networkUnavailable: "\u7F51\u7EDC\u4E0D\u53EF\u7528 \u2014\u2014 \u8BF7\u68C0\u67E5\u7F51\u7EDC\u8FDE\u63A5\u6216\u4EE3\u7406\u8BBE\u7F6E\u540E\u91CD\u8BD5",
         blockedAddress: "\u8BBF\u95EE\u88AB\u963B\u65AD \u2014\u2014 \u8BE5\u5730\u5740\u4E0D\u88AB\u5141\u8BB8",
+        unsupportedUrl: "\u6682\u4E0D\u652F\u6301\u6B64\u7F51\u7AD9\u6216\u94FE\u63A5 \u2014\u2014 \u8BF7\u786E\u8BA4\u662F\u5426\u4E3A\u53D7\u652F\u6301\u7684\u89C6\u9891\u5E73\u53F0",
+        dribbbleProtected: "Dribbble \u9875\u9762\u53D7\u9632\u722C\u4FDD\u62A4\u65E0\u6CD5\u76F4\u63A5\u89E3\u6790\uFF0C\u8BF7\u5728\u6D4F\u89C8\u5668\u4E2D\u53F3\u952E\u89C6\u9891\u590D\u5236\u300C\u89C6\u9891\u5730\u5740\u300D(.mp4) \u540E\u4E0B\u8F7D",
+        dribbbleExtractFailed: "Dribbble \u5185\u5BB9\u89E3\u6790\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u6216\u5728\u6D4F\u89C8\u5668\u4E2D\u590D\u5236\u89C6\u9891\u76F4\u94FE",
+        dribbbleNoMedia: "\u672A\u5728\u8BE5 Dribbble \u9875\u9762\u4E2D\u627E\u5230\u53EF\u4E0B\u8F7D\u7684\u89C6\u9891\u6216\u56FE\u7247",
+        videoUnavailable: "\u89C6\u9891\u4E0D\u53EF\u7528\u6216\u5DF2\u88AB\u5220\u9664",
+        privateVideo: "\u79C1\u5BC6\u89C6\u9891\u6216\u9700\u8981\u767B\u5F55\u8BBF\u95EE",
         unknown: "\u672A\u77E5"
       },
       progress: {
@@ -4567,8 +4593,6 @@ var require_zh_CN = __commonJS({
         sectionEngines: "\u6838\u5FC3\u5F15\u64CE\u4F9D\u8D56",
         autoAddSourceLabel: "\u81EA\u52A8\u8BBE\u7F6E Eagle \u6570\u636E\u6765\u6E90",
         autoAddSourceHint: "\u5F00\u542F\u540E\uFF0C\u4E0B\u8F7D\u89C6\u9891\u65F6\u4F1A\u81EA\u52A8\u5728 Eagle \u4E2D\u8BB0\u5F55\u539F\u59CB\u7F51\u9875 URL",
-        cookieConsentLabel: "\u5141\u8BB8\u4F7F\u7528\u6D4F\u89C8\u5668 Cookie",
-        cookieConsentHint: "\u53EF\u9009\u529F\u80FD\uFF0C\u9ED8\u8BA4\u5173\u95ED\u3002\u5F00\u542F\u540E\uFF0C\u82E5\u67D0\u4E2A\u53D7\u652F\u6301 HTTPS \u94FE\u63A5\u4E0B\u8F7D\u5931\u8D25\uFF0Cyt-dlp \u53EF\u80FD\u8BFB\u53D6 Chrome \u4E2D\u4E0E\u76EE\u6807\u7F51\u7AD9\u5339\u914D\u7684\u767B\u5F55 Cookie \u5E76\u76F4\u63A5\u53D1\u9001\u7ED9\u8BE5\u7F51\u7AD9\u3002\u4E0D\u7ECF\u5F00\u53D1\u8005\u6216\u4EFB\u4F55\u4E2D\u95F4\u670D\u52A1\u5668\u3002Pinterest \u6D3E\u751F\u7684\u7B2C\u4E09\u65B9\u57DF\u540D\u4F1A\u9010\u57DF\u540D\u5F39\u7A97\u8BF7\u6C42\u786E\u8BA4\u3002",
         maxResolutionLabel: "\u6E05\u6670\u5EA6\u4E0A\u9650",
         maxResolutionHint: "\u9650\u5236\u4E0B\u8F7D\u7684\u6700\u5927\u6E05\u6670\u5EA6\u3002\u82E5\u76EE\u6807\u89C6\u9891\u65E0\u5BF9\u5E94\u753B\u8D28\uFF0C\u5C06\u81EA\u52A8\u5411\u4E0B\u5339\u914D\u6700\u9AD8\u53EF\u7528\u6E05\u6670\u5EA6\u3002",
         maxFramerateLabel: "\u5E27\u7387\u4E0A\u9650",
@@ -4606,14 +4630,6 @@ var require_zh_CN = __commonJS({
         versionInstalled: "\u7248\u672C\uFF1A{{version}}",
         versionUpdate: "{{from}} \u2192 {{to}}",
         progressText: "\u6B63\u5728\u4E0B\u8F7D... {{percent}}%"
-      },
-      consent: {
-        title: "Cookie \u4F7F\u7528\u6388\u6743",
-        bodyPrefixDirect: "\u5373\u5C06\u4ECE",
-        bodyPrefixDerived: "\u6B64 Pinterest Pin \u5305\u542B\u6765\u81EA",
-        bodySuffix: "\u7684\u5185\u5BB9\u3002\u5141\u8BB8 yt-dlp \u4F7F\u7528 Chrome Cookie \u4E0B\u8F7D\uFF1FCookie \u7531\u672C\u673A yt-dlp \u76F4\u63A5\u53D1\u9001\u7ED9\u8BE5\u7F51\u7AD9\u53CA\u5176\u5185\u5BB9\u670D\u52A1\u5668\uFF0C\u4E0D\u7ECF\u5F00\u53D1\u8005\u670D\u52A1\u5668\u3002",
-        allow: "\u5141\u8BB8",
-        deny: "\u62D2\u7EDD"
       }
     };
   }
@@ -4650,18 +4666,9 @@ async function importToEagle(videoPath, metadata, sourceUrl) {
     throw new Error(`${i18next2.t("error.eagleImportFailed")}: ${error.message}`);
   }
 }
-var COOKIE_CONSENT_KEY = "eagle-video-downloader.cookieConsent";
 var AUTO_ADD_SOURCE_KEY = "eagle-video-downloader.autoAddSource";
 var MAX_RESOLUTION_KEY = "eagle-video-downloader.maxResolution";
 var MAX_FRAMERATE_KEY = "eagle-video-downloader.maxFramerate";
-function getCookieConsentPref() {
-  const val = localStorage.getItem(COOKIE_CONSENT_KEY);
-  return val === "true";
-}
-function setCookieConsentPref(value) {
-  localStorage.setItem(COOKIE_CONSENT_KEY, String(value));
-  downloader.setCookieConsent(Boolean(value));
-}
 function getAutoAddSourcePref() {
   const val = localStorage.getItem(AUTO_ADD_SOURCE_KEY);
   return val === null ? true : val === "true";
@@ -4721,8 +4728,6 @@ eagle.onPluginCreate(async (plugin) => {
   applyTranslations();
   ui.updateTheme();
   setupEventListeners();
-  downloader.setCookieConsent(getCookieConsentPref());
-  downloader.setCookieConsentPrompt(ui.requestCookieConsentDialog);
   downloader.setQualityPrefs({
     resolution: getMaxResolutionPref(),
     framerate: getMaxFrameratePref()
@@ -4749,12 +4754,6 @@ function setupEventListeners() {
   if (autoAddToggle) {
     autoAddToggle.addEventListener("change", (e) => {
       setAutoAddSourcePref(e.target.checked);
-    });
-  }
-  const cookieToggle = document.getElementById("cookieConsentToggle");
-  if (cookieToggle) {
-    cookieToggle.addEventListener("change", (e) => {
-      setCookieConsentPref(e.target.checked);
     });
   }
   const maxResSelect = document.getElementById("maxResolutionSelect");
@@ -4827,7 +4826,6 @@ async function initializeBinaries() {
   ui.showDepsPage({
     tab: "dependencies",
     gating: true,
-    cookieConsentPref: getCookieConsentPref(),
     autoAddSourcePref: getAutoAddSourcePref(),
     maxResolutionPref: getMaxResolutionPref(),
     maxFrameratePref: getMaxFrameratePref()
@@ -4890,6 +4888,32 @@ function processQueue() {
     executeDownload(nextItem);
   }
 }
+function formatDownloadError(error, url) {
+  if ((error == null ? void 0 : error.code) === "ENETBOUNDARY") {
+    return i18next2.t("error.blockedAddress");
+  }
+  if (isNetworkError(error)) {
+    return i18next2.t("error.networkUnavailable");
+  }
+  const msg = (error == null ? void 0 : error.message) || "";
+  if (/Unsupported URL/i.test(msg)) {
+    try {
+      const hostname = new URL(url).hostname.toLowerCase();
+      if (hostname === "dribbble.com" || hostname.endsWith(".dribbble.com")) {
+        return i18next2.t("error.dribbbleProtected");
+      }
+    } catch {
+    }
+    return i18next2.t("error.unsupportedUrl");
+  }
+  if (/Video unavailable|This video is unavailable|Unable to download video/i.test(msg)) {
+    return i18next2.t("error.videoUnavailable");
+  }
+  if (/Private video|This video is private|Sign in to confirm/i.test(msg)) {
+    return i18next2.t("error.privateVideo");
+  }
+  return msg || i18next2.t("download.failed");
+}
 async function executeDownload(item) {
   try {
     item.state = "preparing";
@@ -4919,13 +4943,7 @@ async function executeDownload(item) {
     }
   } catch (error) {
     item.state = "error";
-    if ((error == null ? void 0 : error.code) === "ENETBOUNDARY") {
-      item.error = i18next2.t("error.blockedAddress");
-    } else if (isNetworkError(error)) {
-      item.error = i18next2.t("error.networkUnavailable");
-    } else {
-      item.error = error.message || i18next2.t("download.failed");
-    }
+    item.error = formatDownloadError(error, item.url);
     ui.updateQueueItem(item.id, item);
   } finally {
     activeCount--;
@@ -4965,7 +4983,6 @@ async function checkForUpdateAndNotify() {
 function openDepsPage() {
   ui.showDepsPage({
     tab: "settings",
-    cookieConsentPref: getCookieConsentPref(),
     autoAddSourcePref: getAutoAddSourcePref(),
     maxResolutionPref: getMaxResolutionPref(),
     maxFrameratePref: getMaxFrameratePref()

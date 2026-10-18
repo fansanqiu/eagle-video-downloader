@@ -15,9 +15,11 @@
 - 支持 Pinterest 图钉下载；转存内容自动提取第三方源（Instagram、YouTube、TikTok、Vimeo）并优先下载源视频
 - 纯图片 Pin 自动获取高清原图
 
-新增浏览器 Cookie 授权（可选，默认关闭）：
-- 需用户在偏好设置中主动开启；下载失败时，经目标域名确认后，本地 yt-dlp 可能读取匹配的 Chrome 登录 Cookie，并在相关网站、内容服务器或重定向所到达服务的请求中使用
-- 每个目标域名首次使用 Cookie 前均弹窗显示确切域名并请求授权；插件没有开发者运营的 Cookie 收集服务器
+新增 Dribbble 支持：
+- 支持 Dribbble 作品页面视频与设计图片解析下载，自动提取 CDN 高清 MP4 直链与原图
+
+错误提示与体验优化：
+- 针对不支持的网站或链接提供友好的本地化提示与下载指引，替代底层命令行报错
 
 依赖管理调整：
 - FFmpeg 改为依赖 Eagle 官方 FFmpeg 插件，未安装时可一键跳转应用商店（不再自行下载 FFmpeg）
@@ -45,9 +47,11 @@ New Pinterest Support:
 - Download Pinterest pins (video & image); automatically extracts embedded third-party sources (Instagram, YouTube, TikTok, Vimeo) and downloads from the original source when available
 - Automatically fetches full-resolution images for image-only Pins
 
-New Browser Cookie Authorization (optional, off by default):
-- Requires explicit opt-in in Preferences; when enabled, if a download from any supported HTTPS URL fails, yt-dlp may read Chrome cookies matching that site and retry
-- A per-domain consent prompt shows the exact domain before use; locally running yt-dlp may use matching cookies in requests to the relevant website, content servers, or services reached through redirects. The plugin has no developer-operated cookie-collection server
+New Dribbble Support:
+- Extract and download videos and artwork images from Dribbble shot pages, automatically fetching direct high-res MP4 files and original images
+
+Error Handling & UX Improvements:
+- Clear localized guidance and actionable tips for unsupported sites and error states instead of raw CLI errors
 
 Dependency Management Changes:
 - FFmpeg now requires the Eagle Official FFmpeg Plugin; a one-click link to the store is shown if it is not installed (no longer downloads FFmpeg automatically)

@@ -278,10 +278,9 @@ async function customGetInfo(url, { execYtDlp, parseYtDlpOutput, getSiteArgsForU
 /**
  * 处理 Pinterest "No video formats found" 降级。
  * 收紧了触发条件（移除宽泛的 "login" / "redirect" 匹配），
- * 派生 sourceUrl 进入 yt-dlp 前必须通过白名单校验与 validateUrl，
- * 派生域名的 Cookie 使用需通过 requestCookieConsent 弹窗确认。
+ * 派生 sourceUrl 进入 yt-dlp 前必须通过白名单校验与 validateUrl。
  */
-async function handleExecFailure({ stderr, args, onProgress, onOutput, execYtDlp, hasCookieConsent, authorizeCookies, getSiteArgsForUrl, url }) {
+async function handleExecFailure({ stderr, args, onProgress, onOutput, execYtDlp, getSiteArgsForUrl, url }) {
   // 收紧触发条件：仅在明确的 Pinterest 格式问题时尝试降级
   const isNoFormats = stderr.includes("No video formats found") || stderr.includes("[Pinterest]");
   if (!isNoFormats) return null;
@@ -299,8 +298,6 @@ async function handleExecFailure({ stderr, args, onProgress, onOutput, execYtDlp
     }
   })();
 
-  let extractedSourceUrl = null;
-
   if (!alreadyTriedSource) {
     let sourceUrl = await extractPinterestPinData(url).then(d => d?.sourceUrl ?? null);
     if (sourceUrl) {
@@ -314,10 +311,8 @@ async function handleExecFailure({ stderr, args, onProgress, onOutput, execYtDlp
         return null;
       }
 
-      extractedSourceUrl = sourceUrl;
-
       const oldSiteArgs = getSiteArgs();
-      const cleanedArgs = args.filter(a => !oldSiteArgs.includes(a) && a !== "--cookies-from-browser" && a !== "chrome");
+      const cleanedArgs = args.filter(a => !oldSiteArgs.includes(a));
       const newSiteArgs = getSiteArgsForUrl(sourceUrl);
 
       // 将 args 中的原 url 替换为派生 sourceUrl
@@ -327,21 +322,9 @@ async function handleExecFailure({ stderr, args, onProgress, onOutput, execYtDlp
       try {
         return await execYtDlp(newArgs, onProgress, onOutput, { allowRecovery: false, targetUrl: sourceUrl });
       } catch (e) {
-        // 派生域名 Cookie 重试：authorizeCookies 整合开关+弹窗+缓存，弹窗显示 'derived' 措辞
-        if (await authorizeCookies(sourceUrl, 'derived')) {
-          try {
-            return await execYtDlp([...newArgs, "--cookies-from-browser", "chrome"], onProgress, onOutput, { allowRecovery: false, targetUrl: sourceUrl });
-          } catch (e2) {}
-        }
+        // 降级失败则放弃
       }
     }
-  }
-
-  // 对 Pinterest 本身的 Cookie 重试（无派生源情况）：同样需要用户逐域名授权
-  if (!extractedSourceUrl && !args.includes("--cookies-from-browser") && await authorizeCookies(url, 'direct')) {
-    try {
-      return await execYtDlp([...args, "--cookies-from-browser", "chrome"], onProgress, onOutput, { allowRecovery: false, targetUrl: url });
-    } catch (e) {}
   }
 
   return null;
