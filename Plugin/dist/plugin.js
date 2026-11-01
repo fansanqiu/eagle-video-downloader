@@ -3651,12 +3651,43 @@ var require_downloader = __commonJS({
     function isCorruptedBinaryError(error) {
       return error.code === "EBADMACHO" || error.code === "ENOEXEC" || error.errno === -88;
     }
+    function createCancelledError() {
+      const error = new Error("Download cancelled");
+      error.code = "ECANCELLED";
+      return error;
+    }
+    function isCancelledError(error) {
+      return (error == null ? void 0 : error.code) === "ECANCELLED";
+    }
+    function killProcessTree(proc) {
+      try {
+        if (os.platform() === "win32") {
+          spawn("taskkill", ["/pid", String(proc.pid), "/T", "/F"], { windowsHide: true }).on("error", () => proc.kill());
+        } else {
+          process.kill(-proc.pid, "SIGTERM");
+        }
+      } catch (e) {
+        proc.kill();
+      }
+    }
+    function withSignal(signal) {
+      return (args, onProgress, onOutput, options = {}) => {
+        if (typeof options === "boolean") {
+          options = { allowRecovery: options };
+        }
+        return execYtDlp(args, onProgress, onOutput, { ...options, signal });
+      };
+    }
     function execYtDlp(args, onProgress, onOutput, options = {}) {
       if (typeof options === "boolean") {
         options = { allowRecovery: options };
       }
-      const { allowRecovery = true, targetUrl = null } = options;
+      const { allowRecovery = true, targetUrl = null, signal = null } = options;
       return new Promise((resolve, reject) => {
+        if (signal == null ? void 0 : signal.aborted) {
+          reject(createCancelledError());
+          return;
+        }
         const ytdlp = getYtDlpPath();
         if (!fs.existsSync(ytdlp)) {
           reject(new Error(i18next3.t("error.ytdlpNotInstalled")));
@@ -3673,12 +3704,12 @@ var require_downloader = __commonJS({
             fs.unlinkSync(ytdlp);
           } catch (e) {
           }
-          downloadYtDlp2().then(() => execYtDlp(args, onProgress, onOutput, { allowRecovery: false, targetUrl })).then(resolve).catch(() => reject(new Error(`${i18next3.t("error.failedToExecuteYtdlp")}: ${error.message}`)));
+          downloadYtDlp2().then(() => execYtDlp(args, onProgress, onOutput, { allowRecovery: false, targetUrl, signal })).then(resolve).catch(() => reject(new Error(`${i18next3.t("error.failedToExecuteYtdlp")}: ${error.message}`)));
         };
         const finalArgs = args.includes("--force-ipv4") ? args : ["--force-ipv4", ...args];
         let proc;
         try {
-          proc = spawn(ytdlp, finalArgs, { cwd: path.dirname(ytdlp) });
+          proc = spawn(ytdlp, finalArgs, { cwd: path.dirname(ytdlp), detached: os.platform() !== "win32" });
         } catch (error) {
           if (allowRecovery && isCorruptedBinaryError(error)) {
             recoverFromCorruptBinary(error);
@@ -3687,6 +3718,8 @@ var require_downloader = __commonJS({
           reject(new Error(`${i18next3.t("error.failedToExecuteYtdlp")}: ${error.message}`));
           return;
         }
+        const onAbort = () => killProcessTree(proc);
+        signal == null ? void 0 : signal.addEventListener("abort", onAbort, { once: true });
         let stdout = "";
         let stderr = "";
         proc.stdout.on("data", (data) => {
@@ -3715,6 +3748,11 @@ var require_downloader = __commonJS({
           stderr += data.toString();
         });
         proc.on("error", (error) => {
+          signal == null ? void 0 : signal.removeEventListener("abort", onAbort);
+          if (signal == null ? void 0 : signal.aborted) {
+            reject(createCancelledError());
+            return;
+          }
           if (allowRecovery && isCorruptedBinaryError(error)) {
             recoverFromCorruptBinary(error);
             return;
@@ -3728,6 +3766,11 @@ var require_downloader = __commonJS({
           reject(new Error(`${i18next3.t("error.failedToExecuteYtdlp")}: ${detail}`));
         });
         proc.on("close", async (code) => {
+          signal == null ? void 0 : signal.removeEventListener("abort", onAbort);
+          if (signal == null ? void 0 : signal.aborted) {
+            reject(createCancelledError());
+            return;
+          }
           if (code === 0) {
             resolve(stdout);
           } else {
@@ -3739,7 +3782,7 @@ var require_downloader = __commonJS({
                   args,
                   onProgress,
                   onOutput,
-                  execYtDlp,
+                  execYtDlp: withSignal(signal),
                   getSiteArgsForUrl: siteAdapters.getSiteArgs,
                   url: targetUrl
                 });
@@ -3757,7 +3800,7 @@ var require_downloader = __commonJS({
         });
       });
     }
-    async function downloadFile(url, outputPath, onProgress, maxRedirects = 5) {
+    async function downloadFile(url, outputPath, onProgress, maxRedirects = 5, signal = null) {
       const dir = path.dirname(outputPath);
       if (!fs.existsSync(dir))
         fs.mkdirSync(dir, { recursive: true });
@@ -3779,7 +3822,7 @@ var require_downloader = __commonJS({
                   redirectUrl = `${u.protocol}//${u.host}${redirectUrl}`;
                 }
                 res.resume();
-                downloadFile(redirectUrl, outputPath, onProgress, maxRedirects - 1).then(resolve).catch(reject);
+                downloadFile(redirectUrl, outputPath, onProgress, maxRedirects - 1, signal).then(resolve).catch(reject);
                 return;
               }
               if (res.statusCode < 200 || res.statusCode >= 400) {
@@ -3805,6 +3848,15 @@ var require_downloader = __commonJS({
           } catch (e) {
             return reject(e);
           }
+          if (signal) {
+            const abort = () => {
+              req.destroy();
+              reject(createCancelledError());
+            };
+            if (signal.aborted)
+              return abort();
+            signal.addEventListener("abort", abort, { once: true });
+          }
           req.on("error", reject);
           req.setTimeout(3e4, () => {
             req.destroy();
@@ -3813,20 +3865,23 @@ var require_downloader = __commonJS({
         })();
       });
     }
-    async function getVideoInfo(url) {
+    async function getVideoInfo(url, { signal = null } = {}) {
       await validateUrl(url);
       url = siteAdapters.normalizeUrl(url);
       await validateUrl(url);
       const customInfo = await siteAdapters.customGetInfo(url, {
-        execYtDlp,
+        execYtDlp: withSignal(signal),
         parseYtDlpOutput,
         getSiteArgsForUrl: siteAdapters.getSiteArgs
       });
+      if (signal == null ? void 0 : signal.aborted) {
+        throw createCancelledError();
+      }
       if (customInfo) {
         return customInfo;
       }
       const args = ["--dump-json", "--no-warnings", ...siteAdapters.getSiteArgs(url), url];
-      const output = await execYtDlp(args, null, null, { targetUrl: url });
+      const output = await execYtDlp(args, null, null, { targetUrl: url, signal });
       return parseYtDlpOutput(output, url);
     }
     function parseYtDlpOutput(output, fallbackUrl) {
@@ -3880,7 +3935,13 @@ var require_downloader = __commonJS({
       }
       return fs.mkdtempSync(path.join(tempDir, "download-"));
     }
-    async function downloadVideo(url, onProgress, onStatus, preloadedInfo = null) {
+    function removeTempDir(dir) {
+      try {
+        fs.rmSync(dir, { recursive: true, force: true });
+      } catch (error) {
+      }
+    }
+    async function downloadVideo(url, onProgress, onStatus, preloadedInfo = null, { signal = null } = {}) {
       await validateUrl(url);
       let videoInfo;
       if (preloadedInfo) {
@@ -3889,12 +3950,14 @@ var require_downloader = __commonJS({
         if (onStatus)
           onStatus(i18next3.t("download.fetchingInfo"));
         try {
-          videoInfo = await getVideoInfo(url);
+          videoInfo = await getVideoInfo(url, { signal });
           if (onStatus && videoInfo && videoInfo.title) {
             const foundMsg = typeof i18next3 !== "undefined" && i18next3.t ? i18next3.t("download.foundVideo") : "Found Video";
             onStatus(`${foundMsg}: ${videoInfo.title}`);
           }
         } catch (error) {
+          if (isCancelledError(error))
+            throw error;
           videoInfo = {
             title: typeof i18next3 !== "undefined" && i18next3.t ? i18next3.t("error.untitledVideo") : "Untitled Video",
             extractor: typeof i18next3 !== "undefined" && i18next3.t ? i18next3.t("error.unknown") : "Unknown"
@@ -3911,7 +3974,15 @@ var require_downloader = __commonJS({
         const outputPath = path.join(outputDir2, filename);
         if (onStatus)
           onStatus(i18next3.t("ui.downloading"));
-        await downloadFile(videoInfo.imageUrl, outputPath, onProgress);
+        try {
+          await downloadFile(videoInfo.imageUrl, outputPath, onProgress, 5, signal);
+        } catch (error) {
+          if (signal == null ? void 0 : signal.aborted) {
+            removeTempDir(outputDir2);
+            throw createCancelledError();
+          }
+          throw error;
+        }
         return [{
           path: outputPath,
           metadata: videoInfo,
@@ -3946,7 +4017,13 @@ var require_downloader = __commonJS({
       if (onStatus)
         onStatus(i18next3.t("ui.downloading"));
       const filesBefore = new Set(fs.existsSync(outputDir) ? fs.readdirSync(outputDir) : []);
-      await execYtDlp(args, onProgress, null, { targetUrl });
+      try {
+        await execYtDlp(args, onProgress, null, { targetUrl, signal });
+      } catch (error) {
+        if (isCancelledError(error))
+          removeTempDir(outputDir);
+        throw error;
+      }
       const filesAfter = fs.readdirSync(outputDir);
       const newFiles = filesAfter.filter((f) => !filesBefore.has(f) && f.startsWith(sanitizedTitle));
       if (newFiles.length === 0) {
@@ -4090,15 +4167,19 @@ var require_ui = __commonJS({
     `;
       }
       if (state === "done") {
-        return `<span class="item-status-label">${i18next.t("queue.done") || "Finished"}</span>`;
+        return `
+      <div class="item-status-fill"></div>
+      <span class="item-status-label">${i18next.t("queue.done") || "Finished"}</span>
+    `;
       }
       if (state === "downloading") {
-        return `
-      <div class="item-status-fill" style="width: ${item.progress}%"></div>
-      <span class="item-status-label">${i18next.t("queue.downloading") || "Downloading"}</span>
+        const actions = item.importing ? "" : `
       <div class="item-status-actions">
         <button class="item-status-btn" data-action="cancel" data-id="${item.id}">${i18next.t("queue.cancel") || "Cancel"}</button>
-      </div>
+      </div>`;
+        return `
+      <div class="item-status-fill" style="width: ${item.progress}%"></div>
+      <span class="item-status-label">${i18next.t("queue.downloading") || "Downloading"}</span>${actions}
     `;
       }
       return `
@@ -4132,6 +4213,10 @@ var require_ui = __commonJS({
       if (pill) {
         pill.innerHTML = getPillInnerHtml(data);
       }
+    }
+    function removeQueueItem(id) {
+      var _a;
+      (_a = document.querySelector(`.download-item[data-id="${id}"]`)) == null ? void 0 : _a.remove();
     }
     function showCopiedFeedback(id) {
       const btn = document.getElementById(`copy-btn-${id}`);
@@ -4408,6 +4493,7 @@ var require_ui = __commonJS({
       setInputBarState,
       appendQueueItem,
       updateQueueItem,
+      removeQueueItem,
       showCopiedFeedback,
       showCopiedErrorFeedback,
       showDepsPage,
@@ -4845,6 +4931,8 @@ function setupEventListeners() {
       return;
     const action = btn.dataset.action;
     const id = parseInt(btn.dataset.id);
+    if (action === "cancel")
+      cancelDownload(id);
     if (action === "retry")
       retryDownload(id);
     if (action === "copyError")
@@ -4969,10 +5057,16 @@ function formatDownloadError(error, url) {
   return msg || i18next2.t("download.failed");
 }
 async function executeDownload(item) {
+  const controller = new AbortController();
+  const { signal } = controller;
+  item.abortController = controller;
+  item.importing = false;
   try {
     item.state = "preparing";
     ui.updateQueueItem(item.id, item);
-    const videoInfo = await downloader.getVideoInfo(item.url);
+    const videoInfo = await downloader.getVideoInfo(item.url, { signal });
+    if (signal.aborted)
+      return;
     item.title = videoInfo.title || i18next2.t("error.untitledVideo");
     item.state = "downloading";
     ui.updateQueueItem(item.id, item);
@@ -4984,9 +5078,14 @@ async function executeDownload(item) {
         ui.updateQueueItem(item.id, item);
       },
       null,
-      videoInfo
+      videoInfo,
+      { signal }
     );
-    item.state = "completed";
+    if (signal.aborted) {
+      results.forEach((result) => downloader.cleanup(result.path));
+      return;
+    }
+    item.importing = true;
     item.progress = 100;
     item.speed = "";
     ui.updateQueueItem(item.id, item);
@@ -4995,7 +5094,11 @@ async function executeDownload(item) {
       await importToEagle(result.path, result.metadata, sourceUrl);
       downloader.cleanup(result.path);
     }
+    item.state = "done";
+    ui.updateQueueItem(item.id, item);
   } catch (error) {
+    if (signal.aborted)
+      return;
     item.state = "error";
     item.error = formatDownloadError(error, item.url);
     ui.updateQueueItem(item.id, item);
@@ -5003,6 +5106,19 @@ async function executeDownload(item) {
     activeCount--;
     processQueue();
   }
+}
+function cancelDownload(id) {
+  var _a;
+  const index = downloadQueue.findIndex((item2) => item2.id === id);
+  if (index === -1)
+    return;
+  const item = downloadQueue[index];
+  if (item.importing || !["waiting", "preparing", "downloading"].includes(item.state))
+    return;
+  downloadQueue.splice(index, 1);
+  ui.removeQueueItem(id);
+  if (item.state !== "waiting")
+    (_a = item.abortController) == null ? void 0 : _a.abort();
 }
 function retryDownload(id) {
   const item = downloadQueue.find((item2) => item2.id === id);

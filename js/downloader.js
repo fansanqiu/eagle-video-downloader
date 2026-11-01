@@ -56,6 +56,48 @@ function isCorruptedBinaryError(error) {
 }
 
 /**
+ * 用户取消下载时抛出的错误
+ */
+function createCancelledError() {
+  const error = new Error("Download cancelled");
+  error.code = "ECANCELLED";
+  return error;
+}
+
+function isCancelledError(error) {
+  return error?.code === "ECANCELLED";
+}
+
+/**
+ * 终止 yt-dlp 及其子进程（如 ffmpeg 合并进程）
+ */
+function killProcessTree(proc) {
+  try {
+    if (os.platform() === "win32") {
+      spawn("taskkill", ["/pid", String(proc.pid), "/T", "/F"], { windowsHide: true })
+        .on("error", () => proc.kill());
+    } else {
+      // 子进程以 detached 启动，独占进程组，负 pid 可一并终止其子进程
+      process.kill(-proc.pid, "SIGTERM");
+    }
+  } catch (e) {
+    proc.kill();
+  }
+}
+
+/**
+ * 返回绑定了取消信号的 execYtDlp，供站点适配器内部重试调用
+ */
+function withSignal(signal) {
+  return (args, onProgress, onOutput, options = {}) => {
+    if (typeof options === 'boolean') {
+      options = { allowRecovery: options };
+    }
+    return execYtDlp(args, onProgress, onOutput, { ...options, signal });
+  };
+}
+
+/**
  * 执行 yt-dlp 命令
  */
 function execYtDlp(args, onProgress, onOutput, options = {}) {
@@ -63,9 +105,14 @@ function execYtDlp(args, onProgress, onOutput, options = {}) {
   if (typeof options === 'boolean') {
     options = { allowRecovery: options };
   }
-  const { allowRecovery = true, targetUrl = null } = options;
+  const { allowRecovery = true, targetUrl = null, signal = null } = options;
 
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(createCancelledError());
+      return;
+    }
+
     const ytdlp = getYtDlpPath();
 
     if (!fs.existsSync(ytdlp)) {
@@ -80,7 +127,7 @@ function execYtDlp(args, onProgress, onOutput, options = {}) {
     const recoverFromCorruptBinary = (error) => {
       try { fs.unlinkSync(ytdlp); } catch (e) {}
       downloadYtDlp()
-        .then(() => execYtDlp(args, onProgress, onOutput, { allowRecovery: false, targetUrl }))
+        .then(() => execYtDlp(args, onProgress, onOutput, { allowRecovery: false, targetUrl, signal }))
         .then(resolve)
         .catch(() => reject(new Error(`${i18next.t("error.failedToExecuteYtdlp")}: ${error.message}`)));
     };
@@ -89,7 +136,7 @@ function execYtDlp(args, onProgress, onOutput, options = {}) {
 
     let proc;
     try {
-      proc = spawn(ytdlp, finalArgs, { cwd: path.dirname(ytdlp) });
+      proc = spawn(ytdlp, finalArgs, { cwd: path.dirname(ytdlp), detached: os.platform() !== 'win32' });
     } catch (error) {
       if (allowRecovery && isCorruptedBinaryError(error)) {
         recoverFromCorruptBinary(error);
@@ -98,6 +145,9 @@ function execYtDlp(args, onProgress, onOutput, options = {}) {
       reject(new Error(`${i18next.t("error.failedToExecuteYtdlp")}: ${error.message}`));
       return;
     }
+
+    const onAbort = () => killProcessTree(proc);
+    signal?.addEventListener("abort", onAbort, { once: true });
 
     let stdout = "";
     let stderr = "";
@@ -133,6 +183,11 @@ function execYtDlp(args, onProgress, onOutput, options = {}) {
     });
 
     proc.on("error", (error) => {
+      signal?.removeEventListener("abort", onAbort);
+      if (signal?.aborted) {
+        reject(createCancelledError());
+        return;
+      }
       if (allowRecovery && isCorruptedBinaryError(error)) {
         recoverFromCorruptBinary(error);
         return;
@@ -148,6 +203,11 @@ function execYtDlp(args, onProgress, onOutput, options = {}) {
     });
 
     proc.on("close", async (code) => {
+      signal?.removeEventListener("abort", onAbort);
+      if (signal?.aborted) {
+        reject(createCancelledError());
+        return;
+      }
       if (code === 0) {
         resolve(stdout);
       } else {
@@ -161,7 +221,7 @@ function execYtDlp(args, onProgress, onOutput, options = {}) {
               args,
               onProgress,
               onOutput,
-              execYtDlp,
+              execYtDlp: withSignal(signal),
               getSiteArgsForUrl: siteAdapters.getSiteArgs,
               url: targetUrl,
             });
@@ -185,7 +245,7 @@ function execYtDlp(args, onProgress, onOutput, options = {}) {
 /**
  * 通用 HTTPS 文件下载器（连接 pin 到已校验 IP，逐跳重定向重新校验）
  */
-async function downloadFile(url, outputPath, onProgress, maxRedirects = 5) {
+async function downloadFile(url, outputPath, onProgress, maxRedirects = 5, signal = null) {
   const dir = path.dirname(outputPath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
@@ -206,7 +266,7 @@ async function downloadFile(url, outputPath, onProgress, maxRedirects = 5) {
               redirectUrl = `${u.protocol}//${u.host}${redirectUrl}`;
             }
             res.resume();
-            downloadFile(redirectUrl, outputPath, onProgress, maxRedirects - 1).then(resolve).catch(reject);
+            downloadFile(redirectUrl, outputPath, onProgress, maxRedirects - 1, signal).then(resolve).catch(reject);
             return;
           }
           if (res.statusCode < 200 || res.statusCode >= 400) {
@@ -233,6 +293,11 @@ async function downloadFile(url, outputPath, onProgress, maxRedirects = 5) {
       } catch (e) {
         return reject(e);
       }
+      if (signal) {
+        const abort = () => { req.destroy(); reject(createCancelledError()); };
+        if (signal.aborted) return abort();
+        signal.addEventListener('abort', abort, { once: true });
+      }
       req.on('error', reject);
       req.setTimeout(30000, () => { req.destroy(); reject(new Error('Download timeout')); });
     })();
@@ -242,23 +307,27 @@ async function downloadFile(url, outputPath, onProgress, maxRedirects = 5) {
 /**
  * 获取视频信息
  */
-async function getVideoInfo(url) {
+async function getVideoInfo(url, { signal = null } = {}) {
   await validateUrl(url);
   url = siteAdapters.normalizeUrl(url);
   // normalizeUrl 可能产生派生 URL（如 Vimeo ID 转正规地址），必须重新校验
   await validateUrl(url);
 
   const customInfo = await siteAdapters.customGetInfo(url, {
-    execYtDlp,
+    execYtDlp: withSignal(signal),
     parseYtDlpOutput,
     getSiteArgsForUrl: siteAdapters.getSiteArgs,
   });
+  // 站点适配器的 HTTP 请求无法中途终止，返回后再检查是否已取消
+  if (signal?.aborted) {
+    throw createCancelledError();
+  }
   if (customInfo) {
     return customInfo;
   }
 
   const args = ["--dump-json", "--no-warnings", ...siteAdapters.getSiteArgs(url), url];
-  const output = await execYtDlp(args, null, null, { targetUrl: url });
+  const output = await execYtDlp(args, null, null, { targetUrl: url, signal });
 
   return parseYtDlpOutput(output, url);
 }
@@ -328,9 +397,20 @@ function getTempDir() {
 }
 
 /**
+ * 删除单个任务的临时目录（含 yt-dlp 残留的 .part 文件）
+ */
+function removeTempDir(dir) {
+  try {
+    fs.rmSync(dir, { recursive: true, force: true });
+  } catch (error) {
+    // Ignore cleanup errors
+  }
+}
+
+/**
  * 下载视频
  */
-async function downloadVideo(url, onProgress, onStatus, preloadedInfo = null) {
+async function downloadVideo(url, onProgress, onStatus, preloadedInfo = null, { signal = null } = {}) {
   await validateUrl(url);
   let videoInfo;
 
@@ -339,12 +419,13 @@ async function downloadVideo(url, onProgress, onStatus, preloadedInfo = null) {
   } else {
     if (onStatus) onStatus(i18next.t("download.fetchingInfo"));
     try {
-      videoInfo = await getVideoInfo(url);
+      videoInfo = await getVideoInfo(url, { signal });
       if (onStatus && videoInfo && videoInfo.title) {
         const foundMsg = (typeof i18next !== "undefined" && i18next.t) ? i18next.t("download.foundVideo") : "Found Video";
         onStatus(`${foundMsg}: ${videoInfo.title}`);
       }
     } catch (error) {
+      if (isCancelledError(error)) throw error;
       videoInfo = {
         title: (typeof i18next !== "undefined" && i18next.t) ? i18next.t("error.untitledVideo") : "Untitled Video",
         extractor: (typeof i18next !== "undefined" && i18next.t) ? i18next.t("error.unknown") : "Unknown",
@@ -363,7 +444,15 @@ async function downloadVideo(url, onProgress, onStatus, preloadedInfo = null) {
 
     if (onStatus) onStatus(i18next.t("ui.downloading"));
 
-    await downloadFile(videoInfo.imageUrl, outputPath, onProgress);
+    try {
+      await downloadFile(videoInfo.imageUrl, outputPath, onProgress, 5, signal);
+    } catch (error) {
+      if (signal?.aborted) {
+        removeTempDir(outputDir);
+        throw createCancelledError();
+      }
+      throw error;
+    }
 
     return [{
       path: outputPath,
@@ -410,7 +499,12 @@ async function downloadVideo(url, onProgress, onStatus, preloadedInfo = null) {
 
   const filesBefore = new Set(fs.existsSync(outputDir) ? fs.readdirSync(outputDir) : []);
 
-  await execYtDlp(args, onProgress, null, { targetUrl });
+  try {
+    await execYtDlp(args, onProgress, null, { targetUrl, signal });
+  } catch (error) {
+    if (isCancelledError(error)) removeTempDir(outputDir);
+    throw error;
+  }
 
   const filesAfter = fs.readdirSync(outputDir);
   const newFiles = filesAfter.filter(f => !filesBefore.has(f) && f.startsWith(sanitizedTitle));

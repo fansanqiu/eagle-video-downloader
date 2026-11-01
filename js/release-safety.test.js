@@ -68,6 +68,51 @@ test('same-title downloads retain independent media files', async () => {
   }
 });
 
+test('cancelling a download kills the yt-dlp process tree and removes its temp files', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'eagle-cancel-test-'));
+  try {
+    const ytdlpPath = path.join(root, 'yt-dlp.exe');
+    fs.writeFileSync(ytdlpPath, '');
+    const spawned = [];
+    let ytdlpProc;
+    const spawn = (command, args) => {
+      const proc = new EventEmitter();
+      proc.pid = 4242;
+      proc.stdout = new EventEmitter();
+      proc.stderr = new EventEmitter();
+      proc.kill = () => {};
+      spawned.push({ command, args: [...args] });
+      if (command === ytdlpPath) {
+        ytdlpProc = proc;
+        // 模拟 yt-dlp 已写入部分文件
+        fs.writeFileSync(`${args[args.indexOf('-o') + 1].replace('%(autonumber)s.%(ext)s', '1')}.mp4.part`, 'partial');
+      } else {
+        setImmediate(() => ytdlpProc.emit('close', null));
+      }
+      return proc;
+    };
+    const downloader = loadModule('downloader.js', {
+      os: { ...os, tmpdir: () => root, platform: () => 'win32' },
+      child_process: { spawn },
+      './net-guard': network(''),
+      './binary': { getYtDlpPath: () => ytdlpPath, getFfmpegPath: () => null },
+      './sites': { normalizeUrl: url => url, getSiteArgs: () => [], handleExecFailure: async () => null },
+      i18next: { t: key => key },
+    }, __dirname);
+    const controller = new AbortController();
+    const download = downloader.downloadVideo('https://example.com/video', null, null,
+      { title: 'Clip', webpage_url: 'https://example.com/video' }, { signal: controller.signal });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(fs.readdirSync(path.join(root, 'eagle-video-downloader')).length, 1);
+    controller.abort();
+    await assert.rejects(download, { code: 'ECANCELLED' });
+    assert.deepEqual(spawned[1], { command: 'taskkill', args: ['/pid', '4242', '/T', '/F'] });
+    assert.equal(fs.readdirSync(path.join(root, 'eagle-video-downloader')).length, 0);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('failed yt-dlp checksum retains the installed executable', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'eagle-binary-test-'));
   try {

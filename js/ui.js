@@ -143,16 +143,21 @@ function getPillInnerHtml(item) {
   }
 
   if (state === "done") {
-    return `<span class="item-status-label">${i18next.t("queue.done") || "Finished"}</span>`;
+    return `
+      <div class="item-status-fill"></div>
+      <span class="item-status-label">${i18next.t("queue.done") || "Finished"}</span>
+    `;
   }
 
   if (state === "downloading") {
-    return `
-      <div class="item-status-fill" style="width: ${item.progress}%"></div>
-      <span class="item-status-label">${i18next.t("queue.downloading") || "Downloading"}</span>
+    // 导入 Eagle 阶段不可取消，隐藏取消按钮
+    const actions = item.importing ? "" : `
       <div class="item-status-actions">
         <button class="item-status-btn" data-action="cancel" data-id="${item.id}">${i18next.t("queue.cancel") || "Cancel"}</button>
-      </div>
+      </div>`;
+    return `
+      <div class="item-status-fill" style="width: ${item.progress}%"></div>
+      <span class="item-status-label">${i18next.t("queue.downloading") || "Downloading"}</span>${actions}
     `;
   }
 
@@ -199,6 +204,13 @@ function updateQueueItem(id, data) {
   if (pill) {
     pill.innerHTML = getPillInnerHtml(data);
   }
+}
+
+/**
+ * 从列表中移除队列项
+ */
+function removeQueueItem(id) {
+  document.querySelector(`.download-item[data-id="${id}"]`)?.remove();
 }
 
 /**
@@ -531,6 +543,7 @@ module.exports = {
   setInputBarState,
   appendQueueItem,
   updateQueueItem,
+  removeQueueItem,
   showCopiedFeedback,
   showCopiedErrorFeedback,
   showDepsPage,

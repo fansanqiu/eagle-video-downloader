@@ -222,12 +222,13 @@ function setupEventListeners() {
     addToQueue(e.detail.url);
   });
 
-  // 下载列表事件委托（重试、复制链接）
+  // 下载列表事件委托（取消、重试、复制链接）
   document.querySelector(".download-list").addEventListener("click", (e) => {
     const btn = e.target.closest("[data-action]");
     if (!btn) return;
     const action = btn.dataset.action;
     const id = parseInt(btn.dataset.id);
+    if (action === "cancel") cancelDownload(id);
     if (action === "retry") retryDownload(id);
     if (action === "copyError") copyError(id);
     if (action === "copy") copyUrl(id);
@@ -390,11 +391,16 @@ function formatDownloadError(error, url) {
  * 执行单个下载任务
  */
 async function executeDownload(item) {
+  const controller = new AbortController();
+  const { signal } = controller;
+  item.abortController = controller;
+  item.importing = false;
   try {
     item.state = "preparing";
     ui.updateQueueItem(item.id, item);
 
-    const videoInfo = await downloader.getVideoInfo(item.url);
+    const videoInfo = await downloader.getVideoInfo(item.url, { signal });
+    if (signal.aborted) return;
     item.title = videoInfo.title || i18next.t("error.untitledVideo");
     item.state = "downloading";
     ui.updateQueueItem(item.id, item);
@@ -407,10 +413,16 @@ async function executeDownload(item) {
         ui.updateQueueItem(item.id, item);
       },
       null,
-      videoInfo
+      videoInfo,
+      { signal }
     );
+    if (signal.aborted) {
+      results.forEach((result) => downloader.cleanup(result.path));
+      return;
+    }
 
-    item.state = "completed";
+    // 导入 Eagle 期间保持「下载中 100%」并隐藏取消按钮，导入完成后才标记完成
+    item.importing = true;
     item.progress = 100;
     item.speed = "";
     ui.updateQueueItem(item.id, item);
@@ -420,7 +432,12 @@ async function executeDownload(item) {
       await importToEagle(result.path, result.metadata, sourceUrl);
       downloader.cleanup(result.path);
     }
+
+    item.state = "done";
+    ui.updateQueueItem(item.id, item);
   } catch (error) {
+    // 已取消的条目已从队列移除，无需展示错误
+    if (signal.aborted) return;
     item.state = "error";
     item.error = formatDownloadError(error, item.url);
     ui.updateQueueItem(item.id, item);
@@ -428,6 +445,22 @@ async function executeDownload(item) {
     activeCount--;
     processQueue();
   }
+}
+
+/**
+ * 取消下载任务：终止进行中的 yt-dlp 进程并将条目移出队列
+ * 导入 Eagle 阶段不可取消（已入库的文件无法撤回）
+ */
+function cancelDownload(id) {
+  const index = downloadQueue.findIndex((item) => item.id === id);
+  if (index === -1) return;
+  const item = downloadQueue[index];
+  if (item.importing || !["waiting", "preparing", "downloading"].includes(item.state)) return;
+
+  downloadQueue.splice(index, 1);
+  ui.removeQueueItem(id);
+  // waiting 状态尚未启动，无需终止；进行中的任务由 executeDownload 的 finally 释放并发名额
+  if (item.state !== "waiting") item.abortController?.abort();
 }
 
 /**
