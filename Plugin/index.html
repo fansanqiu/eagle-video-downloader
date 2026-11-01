@@ -145,7 +145,7 @@
     .main-content-card {
       background: var(--bg-panel);
       border-radius: 8px;
-      padding: 8px;
+      padding: 0;
       flex: 1;
       min-height: 0;
       display: flex;
@@ -160,7 +160,6 @@
       min-height: 0;
       display: flex;
       flex-direction: column;
-      gap: 8px;
     }
 
     .download-list::-webkit-scrollbar {
@@ -176,84 +175,113 @@
       border-radius: 2px;
     }
 
-    /* Download Item */
+    /* Download Item - flat list style */
     .download-item {
-      background: var(--bg-card);
-      border-radius: 6px;
-      padding: 12px;
       flex-shrink: 0;
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      padding: 12px 12px 6px;
+      border-top: 1px solid var(--bg-app);
+    }
+
+    .download-item:first-child {
+      border-top: none;
     }
 
     .item-title {
       font-size: 12px;
       line-height: 16px;
       color: var(--fg1);
-      white-space: nowrap;
+      white-space: pre-wrap;
+      word-break: break-word;
       overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
       text-overflow: ellipsis;
+      padding-bottom: 6px;
     }
 
-    .item-progress-bar {
-      height: 4px;
-      background: var(--bg-panel);
-      border-radius: 999px;
+    /* Status Pill */
+    .item-status-pill {
+      height: 18px;
+      border-radius: 12px;
       overflow: hidden;
       position: relative;
       width: 100%;
-    }
-
-    .item-progress-fill {
-      height: 100%;
-      background: var(--success);
-      border-radius: 999px;
-      transition: width 0.2s ease;
-      width: 0%;
-    }
-
-    .download-item.error .item-progress-fill {
-      background: var(--error);
-    }
-
-    .item-footer {
       display: flex;
-      justify-content: space-between;
       align-items: center;
-      min-height: 16px;
-      gap: 8px;
-    }
-
-    .item-meta {
-      font-size: 10px;
-      color: var(--fg2);
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      flex: 1;
-    }
-
-    .item-actions {
-      display: flex;
-      gap: 4px;
+      background: var(--bg-app);
       flex-shrink: 0;
     }
 
-    .item-action-btn {
-      background: rgba(255, 255, 255, 0.1);
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      padding: 2px 6px;
-      color: var(--fg2);
-      font-size: 10px;
-      line-height: 14px;
+    .item-status-fill {
+      position: absolute;
+      left: 0;
+      top: 0;
+      height: 100%;
+      border-radius: 12px;
+      transition: width 0.3s ease;
     }
 
-    .item-action-btn:hover {
-      background: rgba(255, 255, 255, 0.2);
+    .download-item.downloading .item-status-fill {
+      background: var(--brand);
+    }
+
+    .download-item.done .item-status-fill {
+      background: #4caf50;
+      width: 100% !important;
+    }
+
+    .download-item.error .item-status-pill {
+      background: rgba(240, 63, 56, 0.12);
+    }
+
+    .item-status-label {
+      position: absolute;
+      left: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 11px;
+      line-height: 12px;
       color: var(--fg1);
+      opacity: 0.6;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      pointer-events: none;
+    }
+
+    .download-item.error .item-status-label {
+      color: #f03f38;
+      opacity: 1;
+    }
+
+    .item-status-actions {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .item-status-btn {
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      color: var(--fg1);
+      font-size: 11px;
+      line-height: 12px;
+      padding: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .item-status-btn:hover {
+      opacity: 0.75;
     }
 
     /* Bottom Input Bar */
@@ -666,6 +694,29 @@
       flex-shrink: 0;
     }
 
+    /* Column layout dep item (new design) */
+    .dep-item-col {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 12px 0;
+    }
+
+    .dep-item-col + .dep-item-col {
+      border-top: 1px solid var(--border-line);
+    }
+
+    .dep-top {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .dep-item-col .dep-actions {
+      flex-shrink: 0;
+    }
+
+    /* Row layout dep item (legacy, keep for compat) */
     .dep-item-row {
       display: flex;
       align-items: center;
@@ -903,13 +954,13 @@
             <div id="depsPanel" class="hidden">
               <div class="deps-card">
                 <!-- yt-dlp item -->
-                <div class="dep-item-row">
-                  <div class="dep-left">
+                <div class="dep-item-col">
+                  <div class="dep-top">
                     <div class="dep-title-wrap">
                       <span class="dep-name">yt-dlp</span>
                       <span id="ytdlpBadge" class="dep-badge checking"></span>
                     </div>
-                    <span id="ytdlpDesc" class="dep-desc">Video extraction & download engine</span>
+                    <span id="ytdlpDesc" class="dep-desc">Video extraction &amp; download engine</span>
                     <div id="ytdlpDetail" class="dep-detail"></div>
                     <div id="ytdlpProgressWrap" class="dep-progress-wrap hidden">
                       <div class="dep-progress-bar">
@@ -921,13 +972,13 @@
                 </div>
 
                 <!-- ffmpeg item -->
-                <div class="dep-item-row">
-                  <div class="dep-left">
+                <div class="dep-item-col">
+                  <div class="dep-top">
                     <div class="dep-title-wrap">
                       <span class="dep-name">ffmpeg</span>
                       <span id="ffmpegBadge" class="dep-badge checking"></span>
                     </div>
-                    <span id="ffmpegDesc" class="dep-desc">Video merging & transcoding engine</span>
+                    <span id="ffmpegDesc" class="dep-desc">Video merging &amp; transcoding engine</span>
                     <div id="ffmpegDetail" class="dep-detail"></div>
                     <div id="ffmpegProgressWrap" class="dep-progress-wrap hidden">
                       <div class="dep-progress-bar">
@@ -939,6 +990,7 @@
                 </div>
               </div>
             </div>
+          </div>
           </div>
         </div>
       </div>

@@ -115,26 +115,59 @@ function appendQueueItem(item) {
 }
 
 /**
- * 创建队列项 DOM 元素
+ * 获取状态胶囊的内部 HTML
+ * state: 'preparing' | 'downloading' | 'done' | 'error'
+ */
+function getPillInnerHtml(item) {
+  const state = item.state;
+
+  if (state === "error") {
+    const errText = item.error ? escapeHtml(item.error) : (i18next.t("queue.error") || "Error");
+    return `
+      <span class="item-status-label">${errText}</span>
+      <div class="item-status-actions">
+        <button class="item-status-btn" data-action="retry" data-id="${item.id}">${i18next.t("queue.retry")}</button>
+        <button class="item-status-btn" data-action="copyError" data-id="${item.id}" id="copy-error-btn-${item.id}">${i18next.t("queue.copyError")}</button>
+        <button class="item-status-btn" data-action="copy" data-id="${item.id}" id="copy-btn-${item.id}">${i18next.t("queue.copyUrl")}</button>
+      </div>
+    `;
+  }
+
+  if (state === "done") {
+    return `<span class="item-status-label">${i18next.t("queue.done") || "Finished"}</span>`;
+  }
+
+  if (state === "downloading") {
+    return `
+      <div class="item-status-fill" style="width: ${item.progress}%"></div>
+      <span class="item-status-label">${i18next.t("queue.downloading") || "Downloading"}</span>
+      <div class="item-status-actions">
+        <button class="item-status-btn" data-action="cancel" data-id="${item.id}">${i18next.t("queue.cancel") || "Cancel"}</button>
+      </div>
+    `;
+  }
+
+  // preparing (default)
+  return `
+    <span class="item-status-label">${i18next.t("queue.preparing") || "Preparing"}</span>
+    <div class="item-status-actions">
+      <button class="item-status-btn" data-action="cancel" data-id="${item.id}">${i18next.t("queue.cancel") || "Cancel"}</button>
+    </div>
+  `;
+}
+
+/**
+ * 创建队列项 DOM 元素（新版状态胶囊设计）
  */
 function createQueueItemEl(item) {
   const el = document.createElement("div");
   el.className = `download-item ${item.state}`;
   el.dataset.id = item.id;
 
-  const isError = item.state === "error";
   el.innerHTML = `
     <div class="item-title">${escapeHtml(item.title)}</div>
-    <div class="item-progress-bar">
-      <div class="item-progress-fill" style="width: ${item.progress}%"></div>
-    </div>
-    <div class="item-footer ${isError ? "" : "hidden"}">
-      <span class="item-meta">${escapeHtml(getMetaText(item))}</span>
-      <div class="item-actions">
-        <button class="item-action-btn" data-action="retry" data-id="${item.id}">${i18next.t("queue.retry")}</button>
-        <button class="item-action-btn" data-action="copyError" data-id="${item.id}" id="copy-error-btn-${item.id}">${i18next.t("queue.copyError")}</button>
-        <button class="item-action-btn" data-action="copy" data-id="${item.id}" id="copy-btn-${item.id}">${i18next.t("queue.copyUrl")}</button>
-      </div>
+    <div class="item-status-pill">
+      ${getPillInnerHtml(item)}
     </div>
   `;
 
@@ -153,17 +186,9 @@ function updateQueueItem(id, data) {
   const titleEl = el.querySelector(".item-title");
   if (titleEl) titleEl.textContent = data.title;
 
-  const fill = el.querySelector(".item-progress-fill");
-  if (fill) fill.style.width = `${data.progress}%`;
-
-  const footer = el.querySelector(".item-footer");
-  const isError = data.state === "error";
-  if (footer) {
-    footer.classList.toggle("hidden", !isError);
-    if (isError) {
-      const meta = footer.querySelector(".item-meta");
-      if (meta) meta.textContent = getMetaText(data);
-    }
+  const pill = el.querySelector(".item-status-pill");
+  if (pill) {
+    pill.innerHTML = getPillInnerHtml(data);
   }
 }
 

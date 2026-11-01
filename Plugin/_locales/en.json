@@ -28,7 +28,10 @@
     "retry": "Retry",
     "copyUrl": "Copy URL",
     "copyError": "Copy Error",
-    "copied": "Copied!"
+    "copied": "Copied!",
+    "done": "Finished",
+    "cancel": "Cancel",
+    "error_short": "Error"
   },
   "download": {
     "fetchingInfo": "Fetching video information...",

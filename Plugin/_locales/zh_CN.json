@@ -28,7 +28,10 @@
     "retry": "重试",
     "copyUrl": "复制链接",
     "copyError": "复制错误",
-    "copied": "已复制"
+    "copied": "已复制",
+    "done": "下载完成",
+    "cancel": "取消",
+    "error_short": "下载失败"
   },
   "download": {
     "fetchingInfo": "正在获取视频信息...",

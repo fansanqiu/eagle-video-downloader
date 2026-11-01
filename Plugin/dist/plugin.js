@@ -4043,23 +4043,46 @@ var require_ui = __commonJS({
       list.appendChild(createQueueItemEl(item));
       list.scrollTop = list.scrollHeight;
     }
+    function getPillInnerHtml(item) {
+      const state = item.state;
+      if (state === "error") {
+        const errText = item.error ? escapeHtml(item.error) : i18next.t("queue.error") || "Error";
+        return `
+      <span class="item-status-label">${errText}</span>
+      <div class="item-status-actions">
+        <button class="item-status-btn" data-action="retry" data-id="${item.id}">${i18next.t("queue.retry")}</button>
+        <button class="item-status-btn" data-action="copyError" data-id="${item.id}" id="copy-error-btn-${item.id}">${i18next.t("queue.copyError")}</button>
+        <button class="item-status-btn" data-action="copy" data-id="${item.id}" id="copy-btn-${item.id}">${i18next.t("queue.copyUrl")}</button>
+      </div>
+    `;
+      }
+      if (state === "done") {
+        return `<span class="item-status-label">${i18next.t("queue.done") || "Finished"}</span>`;
+      }
+      if (state === "downloading") {
+        return `
+      <div class="item-status-fill" style="width: ${item.progress}%"></div>
+      <span class="item-status-label">${i18next.t("queue.downloading") || "Downloading"}</span>
+      <div class="item-status-actions">
+        <button class="item-status-btn" data-action="cancel" data-id="${item.id}">${i18next.t("queue.cancel") || "Cancel"}</button>
+      </div>
+    `;
+      }
+      return `
+    <span class="item-status-label">${i18next.t("queue.preparing") || "Preparing"}</span>
+    <div class="item-status-actions">
+      <button class="item-status-btn" data-action="cancel" data-id="${item.id}">${i18next.t("queue.cancel") || "Cancel"}</button>
+    </div>
+  `;
+    }
     function createQueueItemEl(item) {
       const el = document.createElement("div");
       el.className = `download-item ${item.state}`;
       el.dataset.id = item.id;
-      const isError = item.state === "error";
       el.innerHTML = `
     <div class="item-title">${escapeHtml(item.title)}</div>
-    <div class="item-progress-bar">
-      <div class="item-progress-fill" style="width: ${item.progress}%"></div>
-    </div>
-    <div class="item-footer ${isError ? "" : "hidden"}">
-      <span class="item-meta">${escapeHtml(getMetaText(item))}</span>
-      <div class="item-actions">
-        <button class="item-action-btn" data-action="retry" data-id="${item.id}">${i18next.t("queue.retry")}</button>
-        <button class="item-action-btn" data-action="copyError" data-id="${item.id}" id="copy-error-btn-${item.id}">${i18next.t("queue.copyError")}</button>
-        <button class="item-action-btn" data-action="copy" data-id="${item.id}" id="copy-btn-${item.id}">${i18next.t("queue.copyUrl")}</button>
-      </div>
+    <div class="item-status-pill">
+      ${getPillInnerHtml(item)}
     </div>
   `;
       return el;
@@ -4072,18 +4095,9 @@ var require_ui = __commonJS({
       const titleEl = el.querySelector(".item-title");
       if (titleEl)
         titleEl.textContent = data.title;
-      const fill = el.querySelector(".item-progress-fill");
-      if (fill)
-        fill.style.width = `${data.progress}%`;
-      const footer = el.querySelector(".item-footer");
-      const isError = data.state === "error";
-      if (footer) {
-        footer.classList.toggle("hidden", !isError);
-        if (isError) {
-          const meta = footer.querySelector(".item-meta");
-          if (meta)
-            meta.textContent = getMetaText(data);
-        }
+      const pill = el.querySelector(".item-status-pill");
+      if (pill) {
+        pill.innerHTML = getPillInnerHtml(data);
       }
     }
     function showCopiedFeedback(id) {
@@ -4105,12 +4119,6 @@ var require_ui = __commonJS({
       setTimeout(() => {
         btn.textContent = original;
       }, 1500);
-    }
-    function getMetaText(item) {
-      if (item.state === "error") {
-        return item.error || i18next.t("queue.error");
-      }
-      return "";
     }
     function escapeHtml(str) {
       return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -4412,7 +4420,10 @@ var require_en = __commonJS({
         retry: "Retry",
         copyUrl: "Copy URL",
         copyError: "Copy Error",
-        copied: "Copied!"
+        copied: "Copied!",
+        done: "Finished",
+        cancel: "Cancel",
+        error_short: "Error"
       },
       download: {
         fetchingInfo: "Fetching video information...",
@@ -4540,7 +4551,10 @@ var require_zh_CN = __commonJS({
         retry: "\u91CD\u8BD5",
         copyUrl: "\u590D\u5236\u94FE\u63A5",
         copyError: "\u590D\u5236\u9519\u8BEF",
-        copied: "\u5DF2\u590D\u5236"
+        copied: "\u5DF2\u590D\u5236",
+        done: "\u4E0B\u8F7D\u5B8C\u6210",
+        cancel: "\u53D6\u6D88",
+        error_short: "\u4E0B\u8F7D\u5931\u8D25"
       },
       download: {
         fetchingInfo: "\u6B63\u5728\u83B7\u53D6\u89C6\u9891\u4FE1\u606F...",
