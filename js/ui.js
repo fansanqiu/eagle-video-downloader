@@ -3,6 +3,8 @@
  * 处理用户界面交互
  */
 
+const dribbble = require('./sites/dribbble');
+
 /**
  * 更新 UI 主题
  */
@@ -69,6 +71,13 @@ function setupInputBar() {
     if (!isValidUrl(url)) {
       setInputBarState("error", i18next.t("error.invalidUrl"));
       return;
+    }
+
+    if (dribbble.match(url) && new URL(url).pathname.includes('/shots/')) {
+      const message = i18next.t('ui.dribbbleConfirm', {
+        url: dribbble.normalizeUrl(url), interpolation: { escapeValue: false },
+      });
+      if (!window.confirm(message)) return;
     }
 
     document.dispatchEvent(new CustomEvent("startDownload", { detail: { url } }));
@@ -337,6 +346,7 @@ function showDepsPage({ tab = "settings", gating = false, autoAddSourcePref = tr
  * 切换依赖页的「门槛模式」：隐藏/显示返回按钮，显示/隐藏强制安装提示
  */
 function setDepsGating(gating) {
+  document.querySelector(".subpage-content-card")?.classList.toggle("gating", gating);
   document.querySelector(".subpage-header")?.classList.toggle("hidden", gating);
   document.getElementById("depsNotice")?.classList.toggle("hidden", !gating);
   if (gating) {

@@ -29,13 +29,14 @@
       --bg-app: #181921;
       --bg-panel: #262733;
       --bg-card: #393c4f;
-      --btn-secondary: #555975;
       --brand: #3197ff;
+      --switch-on: #5095f7;
       --success: #4bd952;
       --error: #f56c6c;
+      --danger: #f03f38;
       --badge-green: #1e8c23;
       --badge-warn: #d97706;
-      --badge-error: #b91c1c;
+      --badge-error: #f03f38;
       --fg1: #ffffff;
       --fg2: rgba(255, 255, 255, 0.4);
       --fg-placeholder: #8d8e95;
@@ -136,7 +137,6 @@
     #mainContainer {
       flex: 1;
       display: flex;
-      padding: 0 4px;
       flex-direction: column;
       min-height: 0;
       overflow: hidden;
@@ -144,7 +144,6 @@
 
     .main-content-card {
       background: var(--bg-panel);
-      border-radius: 8px;
       padding: 0;
       flex: 1;
       min-height: 0;
@@ -160,6 +159,8 @@
       min-height: 0;
       display: flex;
       flex-direction: column;
+      gap: 12px;
+      padding: 0 12px 12px;
     }
 
     .download-list::-webkit-scrollbar {
@@ -180,7 +181,7 @@
       flex-shrink: 0;
       display: flex;
       flex-direction: column;
-      padding: 12px 12px 6px;
+      padding-top: 12px;
       border-top: 1px solid var(--bg-app);
     }
 
@@ -220,7 +221,6 @@
       left: 0;
       top: 0;
       height: 100%;
-      border-radius: 12px;
       transition: width 0.3s ease;
     }
 
@@ -286,7 +286,7 @@
 
     /* Bottom Input Bar */
     .bottom-bar {
-      padding: 12px 8px;
+      padding: 12px;
       display: flex;
       gap: 8px;
       align-items: center;
@@ -433,8 +433,6 @@
 
     .subpage-content-card {
       background: var(--bg-panel);
-      border-radius: 8px;
-      margin: 0 4px 4px;
       flex: 1;
       min-height: 0;
       display: flex;
@@ -491,10 +489,10 @@
 
     .subpage-tab-btn {
       border-radius: 24px;
-      padding: 4px 10px;
+      padding: 4px 12px;
       font-size: 12px;
       line-height: 16px;
-      color: var(--fg2);
+      color: var(--fg1);
       background: transparent;
       border: none;
       cursor: pointer;
@@ -502,22 +500,16 @@
       white-space: nowrap;
     }
 
-    .subpage-tab-btn:hover {
-      color: var(--fg1);
-    }
-
     .subpage-tab-btn.active {
       background: var(--bg-card);
-      color: var(--fg1);
     }
 
     #depsNotice {
-      padding: 8px 12px;
+      padding: 12px 12px 0;
       font-size: 12px;
-      line-height: 1.4;
+      line-height: 16px;
       color: var(--fg1);
       flex-shrink: 0;
-      margin: 4px 0;
     }
 
     .subpage-scroll-body {
@@ -528,6 +520,11 @@
       display: flex;
       flex-direction: column;
       gap: 8px;
+    }
+
+    /* 门槛模式（首次安装）：说明与卡片统一 12px 边距 */
+    .subpage-content-card.gating .subpage-scroll-body {
+      padding: 12px;
     }
 
     .subpage-scroll-body::-webkit-scrollbar {
@@ -545,7 +542,7 @@
 
     /* Settings Panel */
     .settings-card {
-      background: var(--bg-card);
+      background: var(--bg-app);
       border-radius: 6px;
       padding: 0 12px;
       display: flex;
@@ -558,7 +555,7 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 16px;
+      gap: 32px;
       padding: 12px 0;
     }
 
@@ -586,7 +583,7 @@
     .setting-desc {
       font-size: 11px;
       color: var(--fg2);
-      line-height: 14px;
+      line-height: 16px;
     }
 
     /* Toggle Switch UI */
@@ -610,11 +607,11 @@
       appearance: none;
       -webkit-appearance: none;
       -moz-appearance: none;
-      background: #555975;
+      background: var(--bg-card);
       color: #ffffff;
       border: none;
       border-radius: 4px;
-      padding: 4px 22px 4px 8px;
+      padding: 4px 20px 4px 8px;
       font-size: 12px;
       line-height: 16px;
       outline: none;
@@ -624,7 +621,7 @@
     }
 
     .setting-select:hover {
-      background: #626787;
+      background: #45485e;
     }
 
     .setting-select-wrap::after {
@@ -677,7 +674,7 @@
     }
 
     input:checked + .slider {
-      background-color: var(--brand);
+      background-color: var(--switch-on);
     }
 
     input:checked + .slider:before {
@@ -686,42 +683,19 @@
 
     /* Dependencies Panel */
     .deps-card {
-      background: var(--bg-card);
-      border-radius: 8px;
+      background: var(--bg-app);
+      border-radius: 6px;
       padding: 0 12px;
       display: flex;
       flex-direction: column;
       flex-shrink: 0;
     }
 
-    /* Column layout dep item (new design) */
-    .dep-item-col {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      padding: 12px 0;
-    }
-
-    .dep-item-col + .dep-item-col {
-      border-top: 1px solid var(--border-line);
-    }
-
-    .dep-top {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-
-    .dep-item-col .dep-actions {
-      flex-shrink: 0;
-    }
-
-    /* Row layout dep item (legacy, keep for compat) */
     .dep-item-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 16px;
+      gap: 32px;
       padding: 12px 0;
     }
 
@@ -739,15 +713,17 @@
 
     .dep-title-wrap {
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
-      gap: 6px;
+      gap: 4px;
     }
 
     .dep-name {
       font-size: 12px;
-      font-weight: 500;
+      font-weight: 400;
       color: var(--fg1);
       line-height: 16px;
+      white-space: nowrap;
     }
 
     .dep-badge {
@@ -766,16 +742,11 @@
     .dep-badge.checking { background: rgba(255, 255, 255, 0.1); color: var(--fg2); }
     .dep-badge.busy     { background: var(--brand); color: #ffffff; }
 
-    .dep-desc {
-      font-size: 11px;
-      color: var(--fg2);
-      line-height: 14px;
-    }
-
+    .dep-desc,
     .dep-detail {
       font-size: 11px;
       color: var(--fg2);
-      line-height: 14px;
+      line-height: 16px;
     }
 
     .dep-progress-wrap {
@@ -801,13 +772,18 @@
 
     .dep-actions {
       display: flex;
-      gap: 6px;
+      gap: 8px;
       align-items: center;
       flex-shrink: 0;
     }
 
+    .dep-actions:empty,
+    .dep-detail:empty {
+      display: none;
+    }
+
     .dep-btn {
-      background: var(--btn-secondary);
+      background: var(--bg-card);
       border: none;
       border-radius: 4px;
       color: #ffffff;
@@ -816,25 +792,20 @@
       cursor: pointer;
       line-height: 16px;
       white-space: nowrap;
-      transition: opacity 0.2s;
+      transition: background 0.2s;
     }
 
     .dep-btn:hover {
-      opacity: 0.88;
-    }
-
-    .dep-btn.primary {
-      background: var(--brand);
-      color: #ffffff;
+      background: #45485e;
     }
 
     .dep-btn.danger {
-      background: rgba(245, 108, 108, 0.2);
-      color: var(--error);
+      background: rgba(240, 63, 56, 0.12);
+      color: var(--danger);
     }
 
     .dep-btn.danger:hover {
-      background: rgba(245, 108, 108, 0.3);
+      background: rgba(240, 63, 56, 0.2);
     }
 
     /* Utilities */
@@ -919,8 +890,8 @@
               <div class="settings-card">
                 <div class="setting-row">
                   <div class="setting-info">
-                    <span id="maxResolutionLabel" class="setting-title">Max Resolution</span>
-                    <span id="maxResolutionHint" class="setting-desc">Limit the maximum video resolution. If not available, automatically falls back to the highest available resolution.</span>
+                    <span id="maxResolutionLabel" class="setting-title">Resolution Preference</span>
+                    <span id="maxResolutionHint" class="setting-desc">Attempts to match your setting; fallback formats may exceed the selected resolution.</span>
                   </div>
                   <div class="setting-select-wrap no-drag">
                     <select id="maxResolutionSelect" class="setting-select no-drag">
@@ -936,8 +907,8 @@
 
                 <div class="setting-row">
                   <div class="setting-info">
-                    <span id="maxFramerateLabel" class="setting-title">Max Frame Rate</span>
-                    <span id="maxFramerateHint" class="setting-desc">Limit the maximum frame rate. If not available, automatically falls back to the highest available frame rate.</span>
+                    <span id="maxFramerateLabel" class="setting-title">Frame Rate Preference</span>
+                    <span id="maxFramerateHint" class="setting-desc">Attempts to match your setting; fallback formats may exceed the selected frame rate.</span>
                   </div>
                   <div class="setting-select-wrap no-drag">
                     <select id="maxFramerateSelect" class="setting-select no-drag">
@@ -954,8 +925,8 @@
             <div id="depsPanel" class="hidden">
               <div class="deps-card">
                 <!-- yt-dlp item -->
-                <div class="dep-item-col">
-                  <div class="dep-top">
+                <div class="dep-item-row">
+                  <div class="dep-left">
                     <div class="dep-title-wrap">
                       <span class="dep-name">yt-dlp</span>
                       <span id="ytdlpBadge" class="dep-badge checking"></span>
@@ -972,8 +943,8 @@
                 </div>
 
                 <!-- ffmpeg item -->
-                <div class="dep-item-col">
-                  <div class="dep-top">
+                <div class="dep-item-row">
+                  <div class="dep-left">
                     <div class="dep-title-wrap">
                       <span class="dep-name">ffmpeg</span>
                       <span id="ffmpegBadge" class="dep-badge checking"></span>

@@ -12,7 +12,15 @@ YouTube, Twitter / X, TikTok, Bilibili, Instagram, Pinterest, Dribbble, Vimeo, a
 
 ## Features
 
-Supports sites backed by yt-dlp. Install yt-dlp via the dependency manager on first launch. Uses Eagle's official FFmpeg plugin for audio/video merging. Automatically imports downloaded videos to Eagle with metadata. Supports Chinese and English interfaces with real-time progress display. Also supports downloading image-only Pinterest Pins (fetches full-resolution originals automatically).
+Supports sites backed by yt-dlp. Install yt-dlp via the dependency manager on first launch and use Eagle's official FFmpeg plugin for audio/video merging. Completed media is automatically imported into Eagle with titles, platform tags, and up to 500 characters of the description. Supports Chinese and English interfaces, real-time download progress, and video and image extraction for Pinterest Pins and Dribbble shots. Available downloads depend on the website and extraction results.
+
+The original webpage URL is saved as the Eagle data source by default and can be turned off in Preferences. Resolution and frame rate settings guide format selection; fallback formats may have unrestricted quality, so downloads may exceed these settings.
+
+## Network and External Services
+
+Using the plugin and installing dependencies require an internet connection. When parsing a Dribbble shot page, the plugin sends the user-provided shot URL to the third-party [Jina Reader](https://r.jina.ai/) service and uses the returned page content to extract media links. Dribbble extraction depends on this service; its availability and response content affect Dribbble downloads.
+
+Before a Dribbble download, the plugin shows the transmitted URL and purpose for confirmation; cancelling preserves the input. Media is downloaded to a system temporary directory and cleaned up after successful import. Imports create new Eagle items while existing items remain unchanged. Failed or interrupted download remnants can be removed from the eagle-video-downloader folder in the system temporary directory. Downloads support accessible content that can be retrieved without browser login.
 
 ## Installation
 

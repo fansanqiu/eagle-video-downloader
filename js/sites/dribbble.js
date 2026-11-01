@@ -91,8 +91,15 @@ function fetchShotData(shotUrl) {
           },
         },
         (res) => {
+          if (res.statusCode !== 200) {
+            res.resume();
+            resolve(null);
+            return;
+          }
           let body = "";
           res.on("data", (chunk) => (body += chunk));
+          res.on("error", () => resolve(null));
+          res.on("aborted", () => resolve(null));
           res.on("end", () => {
             resolve(parseJinaResponse(body));
           });

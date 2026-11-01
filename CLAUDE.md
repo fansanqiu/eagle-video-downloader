@@ -39,7 +39,7 @@ npm run package   # 打包为 视频下载器.eagleplugin（构建 + 清理 bin/
 
 ## 架构
 
-源码在 `js/`，esbuild 将其打包为 `Plugin/dist/plugin.js`。UI 定义在 `Plugin/index.html`（内联 CSS）。Eagle 以 `Plugin/` 为根目录加载插件，运行时 `__dirname` 指向 `Plugin/dist/`。
+源码在 `js/`，esbuild 将其打包为 `Plugin/dist/plugin.js`。UI 定义在 `Plugin/index.html`（内联 CSS）。Eagle 通过 HTML 加载脚本；运行时组件目录使用 `onPluginCreate` 回调的 `plugin.path`，以适配 Eagle 与 CLI 的目录差异。
 
 各模块职责：
 

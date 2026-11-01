@@ -14,40 +14,37 @@
 ## 简短描述（一句话）
 
 中文：
-使用 yt-dlp 下载支持网站的视频，及 Pinterest、Dribbble 等设计平台的视频与图片，完成后自动将媒体与标题、平台标签和简介摘要导入 Eagle。
+使用 yt-dlp 下载支持网站的视频，及 Pinterest、Dribbble 的视频与图片，完成后自动将媒体与标题、平台标签和简介摘要导入 Eagle。
 
 英文：
-Download videos from yt-dlp-supported sites, as well as Pinterest and Dribbble media, then import completed files into Eagle with titles, platform tags, and description excerpts.
+Download videos from yt-dlp-supported sites and videos or images from Pinterest and Dribbble, then import the media into Eagle with titles, platform tags, and description excerpts.
 
 ---
 
 ## 详细说明（中文）
 
-使用步骤：
+视频下载器使用 yt-dlp 下载受支持网站的视频，并提供 Pinterest 图钉与 Dribbble 作品的视频、图片解析。下载完成后，媒体文件会自动导入 Eagle，附带标题、平台标签及最多 500 字符的简介摘要。
 
-1. 首次使用时，在插件的「依赖管理」页安装 yt-dlp，并安装 Eagle 官方 FFmpeg 插件。
-2. 依赖安装完成后自动进入主界面。
-3. 复制受支持网站的 HTTPS 媒体链接（视频页面、Pinterest 图钉或 Dribbble 作品链接）。
-4. 将链接粘贴到主界面顶部的输入框。
-5. 点击输入框右侧的「下载」按钮，任务会加入下载队列（最多 3 个并发）。
-6. 下载完成后，媒体文件会自动导入 Eagle，并附带标题、平台标签与简介摘要。
+开始使用：
 
-支持从 YouTube、Twitter / X、TikTok、Bilibili、Instagram、Pinterest、Dribbble、Vimeo 等 yt-dlp 支持的网站下载视频，同时支持下载 Pinterest 纯图片 Pin 与 Dribbble 设计作品原图，并自动导入到 Eagle。导入时自动保存视频标题、平台解析标签与简介摘要（截取前 500 字符）；当用户在偏好设置中开启「自动设置 Eagle 数据来源」选项时，将同步写入原始网页链接。
+1. 使用 macOS 或 Windows 上的 Eagle 4.0 或更高版本。打开「依赖管理」，手动点击安装 yt-dlp。插件会下载固定版本的官方发行文件，并执行 SHA-256 完整性校验。macOS 上会为通过校验的 yt-dlp 文件设置执行权限，并清除该文件的隔离标记。
+2. 安装 Eagle 官方 FFmpeg 插件；依赖管理页提供前往插件商店的入口。
+3. 依赖就绪后，将受支持的 HTTPS 视频页面、Pinterest 图钉或 Dribbble 作品链接粘贴到主界面底部的输入框。
+4. 点击「下载」，Dribbble 作品会先显示传往 Jina Reader 的网址及用途，确认后加入队列；取消后网址保留在输入框中。队列最多同时运行 3 个下载任务。完成的媒体会自动导入 Eagle。
 
-采用全新的 3.0.0 界面设计规范，提供独立的偏好设置与依赖管理分栏：
+下载与偏好设置：
 
-个性化偏好设置：
-- 支持自定义清晰度上限（最高画质 / 4K / 1080P 等）与帧率上限（最高帧率 / 60fps / 30fps 等），未找到对应规格时自动向下匹配最高可用画质。
-- 支持配置是否自动在 Eagle 中记录原始网页来源链接（默认开启）。
+Pinterest 图钉会尝试提取嵌入的第三方视频来源，如 Instagram、YouTube、TikTok 或 Vimeo；图片图钉则提取图片。Dribbble 作品会尝试提取视频或设计图片。实际可下载内容取决于网站与解析结果。
 
-智能平台解析：
-- 新增 Pinterest 图钉（视频与图片）下载，针对转存内容自动前置提取第三方源地址（如 Instagram、YouTube、TikTok、Vimeo 等原始来源）并优先下载源视频；纯图片 Pin 自动获取高清原图。
-- 新增 Dribbble 作品（视频与图片）解析与下载支持，自动提取 CDN 原始高清 MP4 视频与设计图片。
-- 站点适配器模块化架构，全面提升各平台解析稳定性。
+下载适用于无需浏览器登录即可访问的受支持内容。媒体先保存到系统临时目录，成功导入 Eagle 后清理对应临时文件。导入会创建新的 Eagle 项目；已有项目及原始网站内容保持原样。中断或失败的下载可能留下临时文件，可在系统临时目录中的 eagle-video-downloader 文件夹清理。
 
-依赖管理与安装流程：
-- 插件由 yt-dlp（视频解析与提取）与 FFmpeg（音视频合并与转码）提供核心支持。
-- 首次使用或依赖缺失：插件会打开依赖管理页（门槛模式），用户需在依赖管理页手动点击”安装”按钮以完成 yt-dlp 安装（锁定官方发布版本并强制执行 SHA-256 完整性校验）；FFmpeg 需配合 Eagle 官方 FFmpeg 插件使用，若未检测到可直接在依赖管理页点击一键跳转至 Eagle 应用商店快速安装。
+偏好设置提供分辨率、帧率及自动记录网页来源的选项。原始网页链接默认写入 Eagle 的数据来源字段，可在偏好设置中关闭。画质选择会尝试匹配设置；如果没有匹配格式，后备选择可能使用不带分辨率或帧率限制的格式，实际下载值可能超过设置值。
+
+网络与外部服务：
+
+使用插件及安装依赖需要网络连接。解析 Dribbble 作品页面时，插件会将用户提供的作品网址（URL）发送至第三方 Jina Reader 服务（https://r.jina.ai/），并使用其返回的页面内容提取媒体链接。Dribbble 解析依赖该服务；服务的可用性和返回结果会影响 Dribbble 下载。
+
+插件自身的网络请求使用 HTTPS，并检查本地及私有 IP 地址；传递给 yt-dlp 的 Pinterest 派生目标链接也有平台域名限制。这些检查适用于插件自身发起的请求和传入的目标链接。yt-dlp 后续的 DNS 解析、重定向及媒体分片请求由该进程独立处理。
 
 致谢与开源协议：
 - 本项目基于 OlivierEstevez 开发的 eagle-twitter-video-downloader（https://github.com/OlivierEstevez/eagle-twitter-video-downloader）进行扩展，感谢原作者的开创性工作。视频解析与提取由 yt-dlp（https://github.com/yt-dlp/yt-dlp）提供支持，音视频合并与转码由 FFmpeg（https://ffmpeg.org）提供支持。
@@ -56,31 +53,28 @@ Download videos from yt-dlp-supported sites, as well as Pinterest and Dribbble m
 
 ## 详细说明（英文）
 
-How to use:
+Video Downloader uses yt-dlp to download videos from supported sites and provides video and image extraction for Pinterest Pins and Dribbble shots. Completed media is automatically imported into Eagle with a title, a platform tag, and up to 500 characters of the description.
 
-1. On first launch, install yt-dlp from the Dependencies tab and install Eagle's official FFmpeg plugin.
-2. Once both dependencies are ready, the main view opens automatically.
-3. Copy a supported HTTPS media URL (a video page URL, Pinterest Pin URL, or Dribbble shot URL).
-4. Paste the URL into the input field at the top of the main view.
-5. Click the Download button next to the input field; the task is added to the download queue (up to 3 concurrent downloads).
-6. When a download completes, the media is imported into Eagle automatically, together with its title, a platform tag, and a description excerpt.
+Getting started:
 
-Video Downloader uses yt-dlp to download videos from supported sites, and also downloads image-only Pinterest Pins and Dribbble design media, importing completed files into Eagle. Imported items include the title, a platform tag, and up to 500 characters of the description. Saving the original page as the Eagle data source is enabled by default and can be turned off in Preferences. Key features include downloading supported videos, downloading Pinterest Pins and Dribbble shots, setting maximum resolution and frame rate, and automatically importing completed media into Eagle. First-time setup requires yt-dlp and Eagle's official FFmpeg plugin, plus an internet connection.
+1. Use Eagle 4.0 or later on macOS or Windows. Open Dependencies and click Install for yt-dlp. The plugin downloads a pinned official release and verifies its SHA-256 checksum. On macOS, it sets executable permissions and clears the quarantine attribute only for the verified yt-dlp file.
+2. Install Eagle's official FFmpeg plugin. The Dependencies page provides a link to the plugin store.
+3. Once the dependencies are ready, paste a supported HTTPS video page, Pinterest Pin, or Dribbble shot URL into the input field at the bottom of the main view.
+4. Click Download. For Dribbble shots, the plugin first shows the URL to be sent to Jina Reader and its purpose. Confirm to add the task to the queue, or cancel to keep the URL in the input field. Up to 3 downloads run concurrently, and completed media is automatically imported into Eagle.
 
-Built with the 3.0.0 design system featuring dedicated Preferences and Dependency Management tabs:
+Downloads and preferences:
 
-Customizable Preferences:
-- Configure maximum resolution limits (Auto / 4K / 1080P, etc.) and framerate caps (Auto / 60fps / 30fps, etc.), automatically falling back to the highest available quality.
-- Option to automatically save the original webpage URL into Eagle's item source field (enabled by default).
+Pinterest Pins are checked for embedded third-party video sources, such as Instagram, YouTube, TikTok, or Vimeo; image Pins are checked for images. Dribbble shots are checked for videos or artwork images. Available downloads depend on the website and extraction results.
 
-Smart Platform Extraction:
-- Added Pinterest pin (video & image) support with automatic extraction of embedded third-party source URLs (e.g., original Instagram, YouTube, TikTok, or Vimeo sources) to download the original video; automatically fetches full-resolution images for image pins.
-- Added Dribbble shot (video & image) extraction and download support, automatically extracting original high-res MP4 video and artwork from Dribbble CDN.
-- Modularized site adapters for improved maintainability and extraction performance across platforms.
+Downloads support accessible content that can be retrieved without browser login. Media is saved to a system temporary directory, and the corresponding temporary files are cleaned up after successful Eagle import. Imports create new Eagle items; existing items and the original website content remain unchanged. Interrupted or failed downloads may leave temporary files, which can be cleaned up from the eagle-video-downloader folder in the system temporary directory.
 
-Dependency Management & Setup Flow:
-- Powered by yt-dlp (video extraction engine) and FFmpeg (audio/video merging and transcoding).
-- First-Time Setup: If any component is missing, the plugin opens the Dependency Management tab. Users must click the "Install" button in the dependency panel to install yt-dlp (downloads the pinned official release with mandatory SHA-256 integrity verification). FFmpeg requires the official Eagle FFmpeg plugin; if not detected, users can click the one-click store button to install it from the Eagle Plugin Center.
+Preferences include resolution, frame rate, and automatic webpage source recording. Saving the original webpage URL to Eagle's data source field is enabled by default and can be turned off in Preferences. Quality selection attempts to match your settings. If a matching format is unavailable, fallback formats may have unrestricted resolution or frame rate, so the downloaded media may exceed your settings.
+
+Network and external services:
+
+Using the plugin and installing dependencies require an internet connection. When parsing a Dribbble shot page, the plugin sends the user-provided shot URL to the third-party Jina Reader service (https://r.jina.ai/) and uses the returned page content to extract media links. Dribbble extraction depends on this service; its availability and response content affect Dribbble downloads.
+
+The plugin's own network requests use HTTPS and check for local and private IP addresses. Pinterest-derived target URLs passed to yt-dlp are also restricted to approved platform domains. These checks apply to requests initiated by the plugin and the target URLs it passes to yt-dlp. Subsequent DNS resolution, redirects, and media segment requests are handled independently by yt-dlp.
 
 Acknowledgements:
 - This project is based on eagle-twitter-video-downloader by OlivierEstevez (https://github.com/OlivierEstevez/eagle-twitter-video-downloader). Thanks to the original author for the foundational work. Video extraction is powered by yt-dlp (https://github.com/yt-dlp/yt-dlp), and audio/video merging and transcoding are powered by FFmpeg (https://ffmpeg.org).

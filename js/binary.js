@@ -10,20 +10,23 @@ const crypto = require('crypto');
 const { spawn, execFileSync } = require('child_process');
 const { secureHttpsGet } = require('./net-guard');
 
-// 插件路径（__dirname 运行时指向 dist/，向上一级即 Plugin/ 根目录）
-const PLUGIN_ROOT = path.join(__dirname, '..');
-const BIN_DIR = path.join(PLUGIN_ROOT, 'bin');
+// CLI 使用源码所在目录；Eagle 启动时以官方提供的 plugin.path 确定组件目录。
+let BIN_DIR = path.join(__dirname, '..', 'bin');
+
+function setPluginRoot(pluginPath) {
+    BIN_DIR = path.join(pluginPath, 'bin');
+}
 
 /**
  * 锁定依赖版本及 SHA-256 哈希
  */
 const PINNED_VERSIONS = {
     ytdlp: {
-        version: '2026.08.19',
+        version: '2026.10.21',
         assets: {
-            'yt-dlp.exe':   { sha256: '66674953fe251b89f4d08c5f0e35e0728679bd67ab3d7d05c0562af101dd3e7a' },
-            'yt-dlp_macos': { sha256: '0f192b7ec147ab6288885d6351d9ab67367640029b4377576ef46dd79cf7b202' },
-            'yt-dlp_linux': { sha256: '58162f9bfdc27458ea47bfcb311cf47028f17d8154a8bf7d689861d46399230a' },
+            'yt-dlp.exe':   { sha256: '33121d192d706e62f684a06f80918e3f3a8ba52ac3a65213b6951c39c7d9f555' },
+            'yt-dlp_macos': { sha256: '7a6fe71d7d680f1fb0ac18d4949873d77db2859e90017c0f44bd94b23be4ee40' },
+            'yt-dlp_linux': { sha256: 'd8bd33fca9d5b23bd5b9952b3fca36db5c46331933fda9f598a3da14ce2c243f' },
         },
         urlTemplate: 'https://github.com/yt-dlp/yt-dlp/releases/download/{version}/{binary}',
     },
@@ -230,15 +233,20 @@ async function downloadYtDlp(onProgress) {
         .replace('{version}', PINNED_VERSIONS.ytdlp.version)
         .replace('{binary}', binaryName);
 
-    await downloadFile(url, destPath, onProgress);
-    verifySha256(destPath, asset.sha256);
-
-    if (os.platform() !== 'win32') {
-        fs.chmodSync(destPath, '755');
-    }
-
-    if (os.platform() === 'darwin') {
-        clearQuarantine(destPath);
+    const stagingDir = fs.mkdtempSync(path.join(BIN_DIR, '.install-'));
+    const stagingPath = path.join(stagingDir, binaryName);
+    try {
+        await downloadFile(url, stagingPath, onProgress);
+        verifySha256(stagingPath, asset.sha256);
+        if (os.platform() !== 'win32') {
+            fs.chmodSync(stagingPath, '755');
+        }
+        if (os.platform() === 'darwin') {
+            clearQuarantine(stagingPath);
+        }
+        fs.renameSync(stagingPath, destPath);
+    } finally {
+        fs.rmSync(stagingDir, { recursive: true, force: true });
     }
 
     return destPath;
@@ -320,7 +328,8 @@ async function getYtDlpUpdateInfo() {
 }
 
 module.exports = {
-    BIN_DIR,
+    get BIN_DIR() { return BIN_DIR; },
+    setPluginRoot,
     getYtDlpPath,
     getFfmpegPath,
     getFfmpegSource,

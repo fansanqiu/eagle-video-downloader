@@ -7,9 +7,10 @@ const path = require("path");
 const fs = require("fs");
 const os = require("os");
 const { spawn } = require("child_process");
+const { pipeline } = require("stream");
 const i18next = require("i18next");
 
-const { getYtDlpPath, getFfmpegPath, BIN_DIR, downloadYtDlp } = require("./binary");
+const { getYtDlpPath, getFfmpegPath, downloadYtDlp } = require("./binary");
 const { validateUrl, secureHttpsGet } = require("./net-guard");
 const siteAdapters = require("./sites");
 
@@ -88,7 +89,7 @@ function execYtDlp(args, onProgress, onOutput, options = {}) {
 
     let proc;
     try {
-      proc = spawn(ytdlp, finalArgs, { cwd: BIN_DIR });
+      proc = spawn(ytdlp, finalArgs, { cwd: path.dirname(ytdlp) });
     } catch (error) {
       if (allowRecovery && isCorruptedBinaryError(error)) {
         recoverFromCorruptBinary(error);
@@ -223,13 +224,11 @@ async function downloadFile(url, outputPath, onProgress, maxRedirects = 5) {
             }
           });
 
-          res.pipe(fileStream);
-          fileStream.on('finish', () => {
-            fileStream.close();
+          pipeline(res, fileStream, (error) => {
+            if (error) return reject(error);
             if (onProgress) onProgress({ percent: 100 });
             resolve(outputPath);
           });
-          fileStream.on('error', reject);
         });
       } catch (e) {
         return reject(e);
@@ -325,7 +324,7 @@ function getTempDir() {
   if (!fs.existsSync(tempDir)) {
     fs.mkdirSync(tempDir, { recursive: true });
   }
-  return tempDir;
+  return fs.mkdtempSync(path.join(tempDir, 'download-'));
 }
 
 /**
@@ -434,6 +433,11 @@ function cleanup(filePath) {
   try {
     if (filePath && fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
+      const dir = path.dirname(filePath);
+      const root = path.join(os.tmpdir(), 'eagle-video-downloader');
+      if (path.dirname(dir) === root && path.basename(dir).startsWith('download-')) {
+        fs.rmdirSync(dir);
+      }
     }
   } catch (error) {
     // Ignore cleanup errors

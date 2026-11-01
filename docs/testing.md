@@ -42,3 +42,4 @@ module.exports = [
 | `test-ytdlp.js` | 官方二进制下载、SHA-256 完整性校验、macOS 隔离属性清除、`--version` 执行 | ~4秒，无缓存时下载官方版本并校验 |
 | `test-download.js` | 站点适配器匹配、元数据解析、yt-dlp `--simulate` 验证音视频格式就绪 | 模拟下载，验证真实视频源可连通与可下载，不占磁盘 |
 | `js/net-guard.test.js` | 网络安全模块（SSRF/IP/hostname 校验）、Pinterest 派生 URL 白名单、端口限制，含审核方关注的子串绕过场景 | ~1秒，纯内存，无网络请求，运行 `npm test` |
+| `js/release-safety.test.js` | 同名并发下载隔离、校验失败保留现有组件、Jina HTTP 错误处理、Dribbble 第三方传输取消流程、Eagle 组件目录范围 | ~1秒，使用临时目录与模拟网络，随 `npm test` 运行 |

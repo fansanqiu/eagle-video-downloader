@@ -1,5 +1,27 @@
 # Changelog
 
+## 3.0.1
+
+- 修正双语商店介绍：补充 Jina Reader 作品 URL 传输、解析用途与服务依赖，功能说明同步至实际安装包
+- Dribbble 下载前显示网址和第三方解析用途，确认后继续；取消时保留输入
+- 同名下载使用独立临时目录，避免并发任务覆盖或误删彼此的文件
+- yt-dlp 安装和更新先在暂存目录完成 SHA-256 校验，通过后替换组件；失败时保留已安装版本
+- 使用 Eagle 提供的插件路径保存 yt-dlp，安装和卸载范围限定于本插件目录
+- 更新 yt-dlp 至官方 2026.10.21，并同步核对各平台 SHA-256 摘要
+- Dribbble 解析拒绝 Jina 的 HTTP 错误响应，媒体下载处理传输中断
+- 修正分辨率、帧率及底部输入框说明，补充本地临时文件和导入行为
+
+---
+
+- Corrected both store introductions to disclose Dribbble shot URL transmission to Jina Reader, its purpose and service dependency, and align features with the package
+- Dribbble downloads show the transmitted URL and purpose for confirmation; cancellation preserves the input
+- Downloads use separate temporary directories to prevent same-title tasks from overwriting or deleting each other's files
+- yt-dlp installation and updates verify SHA-256 in a staging directory before replacing the component; failures preserve the installed version
+- yt-dlp uses the plugin path supplied by Eagle, keeping installation and removal within this plugin's directory
+- Updated yt-dlp to official release 2026.10.21 with verified checksums for each platform
+- Dribbble extraction rejects failed Jina HTTP responses, and media downloads handle interrupted transfers
+- Corrected resolution, frame rate, and input location descriptions; documented temporary files and Eagle import behavior
+
 ## 3.0.0
 
 全新 3.0.0 界面规范：
@@ -8,7 +30,7 @@
 - 版本更新提示改由设置齿轮红点徽标接管（替代原顶部横幅）
 
 新增偏好设置：
-- 可配置清晰度上限（最高 / 4K / 1080P 等）与帧率上限（最高 / 60fps / 30fps 等），无对应规格时自动向下匹配
+- 可配置分辨率（最高 / 4K / 1080P 等）与帧率（最高 / 60fps / 30fps 等）；后备格式可能使用不带这些限制的画质，实际下载值可能超过设置值
 - 可选择是否将原始网页链接写入 Eagle 数据来源（默认开启）
 
 新增 Pinterest 支持：
@@ -17,6 +39,11 @@
 
 新增 Dribbble 支持：
 - 支持 Dribbble 作品页面视频与设计图片解析下载，自动提取 CDN 高清 MP4 直链与原图
+- 解析时将用户提供的作品 URL 发送至第三方 Jina Reader（https://r.jina.ai/），使用其返回的页面内容提取媒体链接；Dribbble 下载依赖该服务的可用性与返回结果
+
+商店资料修正：
+- 双语介绍同步说明外部服务依赖、实际偏好设置、画质后备选择与底部输入框位置
+- 双语界面同步说明分辨率及帧率偏好的后备格式可能超过设置值
 
 错误提示与体验优化：
 - 针对不支持的网站或链接提供友好的本地化提示与下载指引，替代底层命令行报错
@@ -40,7 +67,7 @@ Redesigned UI & UX to 3.0.0 Specification:
 - Update notifications replaced by badge indicator on the settings icon (previously a top banner)
 
 New Preferences:
-- Configurable maximum resolution (Auto / 4K / 1080P, etc.) and framerate cap (Auto / 60fps / 30fps, etc.), with automatic fallback to the highest available quality
+- Configurable resolution (Auto / 4K / 1080P, etc.) and frame rate (Auto / 60fps / 30fps, etc.); fallback formats may have unrestricted quality, so downloads may exceed these settings
 - Option to save the original webpage URL as the Eagle item source (enabled by default)
 
 New Pinterest Support:
@@ -49,6 +76,11 @@ New Pinterest Support:
 
 New Dribbble Support:
 - Extract and download videos and artwork images from Dribbble shot pages, automatically fetching direct high-res MP4 files and original images
+- Parsing sends the user-provided shot URL to the third-party Jina Reader service (https://r.jina.ai/) and uses the returned page content to extract media links; Dribbble downloads depend on its availability and response content
+
+Store Listing Corrections:
+- Both introductions describe external service dependencies, available preferences, quality fallback behavior, and the bottom input field
+- Both interfaces explain that fallback formats may exceed resolution and frame rate preferences
 
 Error Handling & UX Improvements:
 - Clear localized guidance and actionable tips for unsupported sites and error states instead of raw CLI errors

@@ -5,6 +5,7 @@
 
 const i18next = require("i18next");
 const {
+  setPluginRoot,
   isYtDlpInstalled,
   downloadYtDlp,
   uninstallYtDlp,
@@ -137,6 +138,9 @@ function applyTranslations() {
  * 初始化插件
  */
 eagle.onPluginCreate(async (plugin) => {
+  // Eagle 打开窗口时可能未采用 manifest 中的 main.height，这里显式设定尺寸（与 manifest.json 保持一致）
+  eagle.window?.setSize?.(400, 520)?.catch((err) => console.warn("setSize failed:", err));
+  setPluginRoot(plugin.path);
   await initI18n();
   applyTranslations();
   ui.updateTheme();

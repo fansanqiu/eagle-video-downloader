@@ -2708,15 +2708,17 @@ var require_binary = __commonJS({
     var crypto = require("crypto");
     var { spawn, execFileSync } = require("child_process");
     var { secureHttpsGet } = require_net_guard();
-    var PLUGIN_ROOT = path.join(__dirname, "..");
-    var BIN_DIR = path.join(PLUGIN_ROOT, "bin");
+    var BIN_DIR = path.join(__dirname, "..", "bin");
+    function setPluginRoot2(pluginPath) {
+      BIN_DIR = path.join(pluginPath, "bin");
+    }
     var PINNED_VERSIONS = {
       ytdlp: {
-        version: "2026.08.19",
+        version: "2026.10.21",
         assets: {
-          "yt-dlp.exe": { sha256: "66674953fe251b89f4d08c5f0e35e0728679bd67ab3d7d05c0562af101dd3e7a" },
-          "yt-dlp_macos": { sha256: "0f192b7ec147ab6288885d6351d9ab67367640029b4377576ef46dd79cf7b202" },
-          "yt-dlp_linux": { sha256: "58162f9bfdc27458ea47bfcb311cf47028f17d8154a8bf7d689861d46399230a" }
+          "yt-dlp.exe": { sha256: "33121d192d706e62f684a06f80918e3f3a8ba52ac3a65213b6951c39c7d9f555" },
+          "yt-dlp_macos": { sha256: "7a6fe71d7d680f1fb0ac18d4949873d77db2859e90017c0f44bd94b23be4ee40" },
+          "yt-dlp_linux": { sha256: "d8bd33fca9d5b23bd5b9952b3fca36db5c46331933fda9f598a3da14ce2c243f" }
         },
         urlTemplate: "https://github.com/yt-dlp/yt-dlp/releases/download/{version}/{binary}"
       }
@@ -2888,13 +2890,20 @@ var require_binary = __commonJS({
       if (!asset)
         throw new Error(`Unsupported platform: ${os.platform()}`);
       const url = PINNED_VERSIONS.ytdlp.urlTemplate.replace("{version}", PINNED_VERSIONS.ytdlp.version).replace("{binary}", binaryName);
-      await downloadFile(url, destPath, onProgress);
-      verifySha256(destPath, asset.sha256);
-      if (os.platform() !== "win32") {
-        fs.chmodSync(destPath, "755");
-      }
-      if (os.platform() === "darwin") {
-        clearQuarantine(destPath);
+      const stagingDir = fs.mkdtempSync(path.join(BIN_DIR, ".install-"));
+      const stagingPath = path.join(stagingDir, binaryName);
+      try {
+        await downloadFile(url, stagingPath, onProgress);
+        verifySha256(stagingPath, asset.sha256);
+        if (os.platform() !== "win32") {
+          fs.chmodSync(stagingPath, "755");
+        }
+        if (os.platform() === "darwin") {
+          clearQuarantine(stagingPath);
+        }
+        fs.renameSync(stagingPath, destPath);
+      } finally {
+        fs.rmSync(stagingDir, { recursive: true, force: true });
       }
       return destPath;
     }
@@ -2955,7 +2964,10 @@ var require_binary = __commonJS({
       };
     }
     module2.exports = {
-      BIN_DIR,
+      get BIN_DIR() {
+        return BIN_DIR;
+      },
+      setPluginRoot: setPluginRoot2,
       getYtDlpPath,
       getFfmpegPath,
       getFfmpegSource: getFfmpegSource2,
@@ -3445,8 +3457,15 @@ var require_dribbble = __commonJS({
               }
             },
             (res) => {
+              if (res.statusCode !== 200) {
+                res.resume();
+                resolve(null);
+                return;
+              }
               let body = "";
               res.on("data", (chunk) => body += chunk);
+              res.on("error", () => resolve(null));
+              res.on("aborted", () => resolve(null));
               res.on("end", () => {
                 resolve(parseJinaResponse(body));
               });
@@ -3599,8 +3618,9 @@ var require_downloader = __commonJS({
     var fs = require("fs");
     var os = require("os");
     var { spawn } = require("child_process");
+    var { pipeline } = require("stream");
     var i18next3 = require_i18next();
-    var { getYtDlpPath, getFfmpegPath, BIN_DIR, downloadYtDlp: downloadYtDlp2 } = require_binary();
+    var { getYtDlpPath, getFfmpegPath, downloadYtDlp: downloadYtDlp2 } = require_binary();
     var { validateUrl, secureHttpsGet } = require_net_guard();
     var siteAdapters = require_sites();
     var maxResolution = "auto";
@@ -3658,7 +3678,7 @@ var require_downloader = __commonJS({
         const finalArgs = args.includes("--force-ipv4") ? args : ["--force-ipv4", ...args];
         let proc;
         try {
-          proc = spawn(ytdlp, finalArgs, { cwd: BIN_DIR });
+          proc = spawn(ytdlp, finalArgs, { cwd: path.dirname(ytdlp) });
         } catch (error) {
           if (allowRecovery && isCorruptedBinaryError(error)) {
             recoverFromCorruptBinary(error);
@@ -3774,14 +3794,13 @@ var require_downloader = __commonJS({
                   onProgress({ percent: Math.round(received / contentLength * 100) });
                 }
               });
-              res.pipe(fileStream);
-              fileStream.on("finish", () => {
-                fileStream.close();
+              pipeline(res, fileStream, (error) => {
+                if (error)
+                  return reject(error);
                 if (onProgress)
                   onProgress({ percent: 100 });
                 resolve(outputPath);
               });
-              fileStream.on("error", reject);
             });
           } catch (e) {
             return reject(e);
@@ -3859,7 +3878,7 @@ var require_downloader = __commonJS({
       if (!fs.existsSync(tempDir)) {
         fs.mkdirSync(tempDir, { recursive: true });
       }
-      return tempDir;
+      return fs.mkdtempSync(path.join(tempDir, "download-"));
     }
     async function downloadVideo(url, onProgress, onStatus, preloadedInfo = null) {
       await validateUrl(url);
@@ -3943,6 +3962,11 @@ var require_downloader = __commonJS({
       try {
         if (filePath && fs.existsSync(filePath)) {
           fs.unlinkSync(filePath);
+          const dir = path.dirname(filePath);
+          const root = path.join(os.tmpdir(), "eagle-video-downloader");
+          if (path.dirname(dir) === root && path.basename(dir).startsWith("download-")) {
+            fs.rmdirSync(dir);
+          }
         }
       } catch (error) {
       }
@@ -3960,6 +3984,7 @@ var require_downloader = __commonJS({
 // js/ui.js
 var require_ui = __commonJS({
   "js/ui.js"(exports2, module2) {
+    var dribbble = require_dribbble();
     function updateTheme() {
       const THEME_SUPPORT = {
         AUTO: eagle.app.isDarkColors() ? "gray" : "light",
@@ -4007,6 +4032,14 @@ var require_ui = __commonJS({
         if (!isValidUrl(url)) {
           setInputBarState("error", i18next.t("error.invalidUrl"));
           return;
+        }
+        if (dribbble.match(url) && new URL(url).pathname.includes("/shots/")) {
+          const message = i18next.t("ui.dribbbleConfirm", {
+            url: dribbble.normalizeUrl(url),
+            interpolation: { escapeValue: false }
+          });
+          if (!window.confirm(message))
+            return;
         }
         document.dispatchEvent(new CustomEvent("startDownload", { detail: { url } }));
         urlInput.value = "";
@@ -4211,9 +4244,10 @@ var require_ui = __commonJS({
       setDepsGating(gating);
     }
     function setDepsGating(gating) {
-      var _a, _b;
-      (_a = document.querySelector(".subpage-header")) == null ? void 0 : _a.classList.toggle("hidden", gating);
-      (_b = document.getElementById("depsNotice")) == null ? void 0 : _b.classList.toggle("hidden", !gating);
+      var _a, _b, _c;
+      (_a = document.querySelector(".subpage-content-card")) == null ? void 0 : _a.classList.toggle("gating", gating);
+      (_b = document.querySelector(".subpage-header")) == null ? void 0 : _b.classList.toggle("hidden", gating);
+      (_c = document.getElementById("depsNotice")) == null ? void 0 : _c.classList.toggle("hidden", !gating);
       if (gating) {
         switchSubpageTab("dependencies");
       }
@@ -4399,6 +4433,7 @@ var require_en = __commonJS({
       ui: {
         appTitle: "Video Downloader",
         inputPlaceholder: "Paste any video URL...",
+        dribbbleConfirm: "Send this Dribbble shot URL to the third-party Jina Reader service (https://r.jina.ai/) to extract media links?\n\n{{url}}\n\nConfirm to continue, or cancel to keep the URL in the input field. Dribbble extraction depends on this service.",
         downloadBtn: "Download",
         downloadingBtn: "Downloading...",
         preparing: "Preparing...",
@@ -4476,10 +4511,10 @@ var require_en = __commonJS({
         sectionEngines: "Core Engines",
         autoAddSourceLabel: "Auto-set Eagle Data Source",
         autoAddSourceHint: "When enabled, original web URLs are automatically saved to Eagle items",
-        maxResolutionLabel: "Max Resolution",
-        maxResolutionHint: "Limit the maximum video resolution. If not available, automatically falls back to the highest available resolution.",
-        maxFramerateLabel: "Max Frame Rate",
-        maxFramerateHint: "Limit the maximum frame rate. If not available, automatically falls back to the highest available frame rate.",
+        maxResolutionLabel: "Resolution Preference",
+        maxResolutionHint: "Attempts to match your setting; fallback formats may exceed the selected resolution.",
+        maxFramerateLabel: "Frame Rate Preference",
+        maxFramerateHint: "Attempts to match your setting; fallback formats may exceed the selected frame rate.",
         resAuto: "Auto (Best)",
         fpsAuto: "Auto (Best)",
         setupRequired: "These components are required for first-time use. The main view will open automatically once setup is complete.",
@@ -4530,6 +4565,7 @@ var require_zh_CN = __commonJS({
       ui: {
         appTitle: "\u89C6\u9891\u4E0B\u8F7D\u5668",
         inputPlaceholder: "\u7C98\u8D34\u4EFB\u610F\u89C6\u9891\u94FE\u63A5...",
+        dribbbleConfirm: "\u662F\u5426\u5C06\u4EE5\u4E0B Dribbble \u4F5C\u54C1\u7F51\u5740\u53D1\u9001\u81F3\u7B2C\u4E09\u65B9 Jina Reader \u670D\u52A1\uFF08https://r.jina.ai/\uFF09\uFF0C\u7528\u4E8E\u63D0\u53D6\u5A92\u4F53\u94FE\u63A5\uFF1F\n\n{{url}}\n\n\u786E\u8BA4\u540E\u7EE7\u7EED\u4E0B\u8F7D\uFF1B\u53D6\u6D88\u540E\u7F51\u5740\u4FDD\u7559\u5728\u8F93\u5165\u6846\u4E2D\u3002Dribbble \u89E3\u6790\u4F9D\u8D56\u8BE5\u670D\u52A1\u3002",
         downloadBtn: "\u4E0B\u8F7D",
         downloadingBtn: "\u4E0B\u8F7D\u4E2D...",
         preparing: "\u51C6\u5907\u4E2D...",
@@ -4607,10 +4643,10 @@ var require_zh_CN = __commonJS({
         sectionEngines: "\u6838\u5FC3\u5F15\u64CE\u4F9D\u8D56",
         autoAddSourceLabel: "\u81EA\u52A8\u8BBE\u7F6E Eagle \u6570\u636E\u6765\u6E90",
         autoAddSourceHint: "\u5F00\u542F\u540E\uFF0C\u4E0B\u8F7D\u89C6\u9891\u65F6\u4F1A\u81EA\u52A8\u5728 Eagle \u4E2D\u8BB0\u5F55\u539F\u59CB\u7F51\u9875 URL",
-        maxResolutionLabel: "\u6E05\u6670\u5EA6\u4E0A\u9650",
-        maxResolutionHint: "\u9650\u5236\u4E0B\u8F7D\u7684\u6700\u5927\u6E05\u6670\u5EA6\u3002\u82E5\u76EE\u6807\u89C6\u9891\u65E0\u5BF9\u5E94\u753B\u8D28\uFF0C\u5C06\u81EA\u52A8\u5411\u4E0B\u5339\u914D\u6700\u9AD8\u53EF\u7528\u6E05\u6670\u5EA6\u3002",
-        maxFramerateLabel: "\u5E27\u7387\u4E0A\u9650",
-        maxFramerateHint: "\u9650\u5236\u4E0B\u8F7D\u7684\u6700\u5927\u5E27\u7387\u3002\u82E5\u76EE\u6807\u89C6\u9891\u65E0\u5BF9\u5E94\u5E27\u7387\uFF0C\u5C06\u81EA\u52A8\u5411\u4E0B\u5339\u914D\u6700\u9AD8\u53EF\u7528\u5E27\u7387\u3002",
+        maxResolutionLabel: "\u5206\u8FA8\u7387\u504F\u597D",
+        maxResolutionHint: "\u4F18\u5148\u5C1D\u8BD5\u5339\u914D\u8BBE\u7F6E\uFF1B\u540E\u5907\u683C\u5F0F\u7684\u5206\u8FA8\u7387\u53EF\u80FD\u8D85\u8FC7\u6240\u9009\u503C\u3002",
+        maxFramerateLabel: "\u5E27\u7387\u504F\u597D",
+        maxFramerateHint: "\u4F18\u5148\u5C1D\u8BD5\u5339\u914D\u8BBE\u7F6E\uFF1B\u540E\u5907\u683C\u5F0F\u7684\u5E27\u7387\u53EF\u80FD\u8D85\u8FC7\u6240\u9009\u503C\u3002",
         resAuto: "Auto (\u6700\u9AD8\u753B\u8D28)",
         fpsAuto: "Auto (\u6700\u9AD8\u5E27\u7387)",
         setupRequired: "\u9996\u6B21\u4F7F\u7528\u9700\u8981\u5148\u5B89\u88C5\u4EE5\u4E0B\u7EC4\u4EF6\uFF0C\u5B89\u88C5\u5B8C\u6210\u540E\u5C06\u81EA\u52A8\u8FDB\u5165\u4E3B\u754C\u9762",
@@ -4652,6 +4688,7 @@ var require_zh_CN = __commonJS({
 // js/plugin.js
 var i18next2 = require_i18next();
 var {
+  setPluginRoot,
   isYtDlpInstalled,
   downloadYtDlp,
   uninstallYtDlp,
@@ -4738,6 +4775,9 @@ function applyTranslations() {
     urlInput.placeholder = i18next2.t("ui.inputPlaceholder");
 }
 eagle.onPluginCreate(async (plugin) => {
+  var _a, _b, _c;
+  (_c = (_b = (_a = eagle.window) == null ? void 0 : _a.setSize) == null ? void 0 : _b.call(_a, 400, 520)) == null ? void 0 : _c.catch((err) => console.warn("setSize failed:", err));
+  setPluginRoot(plugin.path);
   await initI18n();
   applyTranslations();
   ui.updateTheme();
