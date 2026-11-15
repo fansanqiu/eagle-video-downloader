@@ -4,20 +4,26 @@
 
 按 Figma 3.1.0 设计稿对齐界面：
 - 新增内层卡片配色 #181921，设置页、依赖页卡片与分栏选中态与设计稿一致
-- 队列状态沿用设计稿的底部细色条配色（蓝 #3197FF／绿 #4CAF50／红 #F03F38）与轨道色 #1E1F29，端点改为全圆角
-- 输入栏图标固定使用 Figma 导出的下载图标，错误态改用红点提示，不再在运行时被旧图标覆盖
+- 队列状态沿用设计稿的底部细色条配色（蓝 #3197FF／绿 #4CAF50／红 #F03F38）与轨道色 #1E1F29
+- 输入栏错误态改用红点提示，不再在运行时被旧图标覆盖
 - 修正页眉 logo 被拉伸为非方形比例，以及 HTML 中多余的结束标签
-- 依赖页 yt-dlp 徽标改为蓝色并展示已安装版本号
+- 修复单条「取消下载」按钮不可见、不可点击的回归
+- 依赖门槛页改为手动进入：底部新增「开始使用」按钮，装齐依赖后可点击进入下载页，不再自动跳转
+- yt-dlp 检查中状态显示蓝色「Checking...」标签，不显示版本号
+- 撤销 Figma 图标替换，恢复原 `icon_*` 图标，清理未使用的图标与死翻译键
 - 同步更新中英文界面文案（窗口标题、设置项、依赖说明、复制链接）
 - 清理 `docs/agents/domain.md` 中残留的旧 `CONTEXT.md` 命名
 
 ---
 
 - Aligned the UI with the Figma 3.1.0 spec; added the inner-card color #181921 so settings/dependency cards and the active tab match the design
-- Queue status keeps the spec's thin bottom progress line (blue #3197FF / green #4CAF50 / red #F03F38) on the #1E1F29 track, with fully rounded ends
-- The input bar keeps the Figma download icon at runtime; errors use a red dot instead of reverting to legacy icons
+- Queue status keeps the spec's thin bottom progress line (blue #3197FF / green #4CAF50 / red #F03F38) on the #1E1F29 track
+- Input-bar errors use a red dot instead of reverting to legacy icons at runtime
 - Fixed the stretched header logo and a stray closing tag in the HTML
-- The yt-dlp badge is now blue and shows the installed version
+- Fixed the per-item "Cancel download" button being invisible and unclickable
+- The dependency gate page now enters manually: a "Start" button appears at the bottom and becomes clickable once all dependencies are installed, instead of auto-advancing
+- The yt-dlp "checking" state shows a blue "Checking..." badge without a version number
+- Reverted the Figma icon swap back to the original `icon_*` icons and removed unused icons and dead translation keys
 - Updated English and Chinese UI copy (window title, setting labels, dependency descriptions, copy-link)
 - Cleaned up the stale `CONTEXT.md` naming in `docs/agents/domain.md`
 
