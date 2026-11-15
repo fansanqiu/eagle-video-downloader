@@ -19,6 +19,9 @@ Thumbs.db
 .vscode/
 .idea/
 
+# WorkBuddy project data
+.workbuddy/
+
 # Logs
 *.log
 npm-debug.log*

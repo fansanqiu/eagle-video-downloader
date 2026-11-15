@@ -1,5 +1,26 @@
 # Changelog
 
+## 3.1.0
+
+按 Figma 3.1.0 设计稿对齐界面：
+- 新增内层卡片配色 #181921，设置页、依赖页卡片与分栏选中态与设计稿一致
+- 队列状态沿用设计稿的底部细色条配色（蓝 #3197FF／绿 #4CAF50／红 #F03F38）与轨道色 #1E1F29，端点改为全圆角
+- 输入栏图标固定使用 Figma 导出的下载图标，错误态改用红点提示，不再在运行时被旧图标覆盖
+- 修正页眉 logo 被拉伸为非方形比例，以及 HTML 中多余的结束标签
+- 依赖页 yt-dlp 徽标改为蓝色并展示已安装版本号
+- 同步更新中英文界面文案（窗口标题、设置项、依赖说明、复制链接）
+- 清理 `docs/agents/domain.md` 中残留的旧 `CONTEXT.md` 命名
+
+---
+
+- Aligned the UI with the Figma 3.1.0 spec; added the inner-card color #181921 so settings/dependency cards and the active tab match the design
+- Queue status keeps the spec's thin bottom progress line (blue #3197FF / green #4CAF50 / red #F03F38) on the #1E1F29 track, with fully rounded ends
+- The input bar keeps the Figma download icon at runtime; errors use a red dot instead of reverting to legacy icons
+- Fixed the stretched header logo and a stray closing tag in the HTML
+- The yt-dlp badge is now blue and shows the installed version
+- Updated English and Chinese UI copy (window title, setting labels, dependency descriptions, copy-link)
+- Cleaned up the stale `CONTEXT.md` naming in `docs/agents/domain.md`
+
 ## 3.0.1
 
 - 修正双语商店介绍：补充 Jina Reader 作品 URL 传输、解析用途与服务依赖，功能说明同步至实际安装包

@@ -170,6 +170,16 @@ function setupEventListeners() {
   document.getElementById("depsEntryBtn").addEventListener("click", openDepsPage);
   document.getElementById("depsBackBtn").addEventListener("click", closeDepsPage);
 
+  document.getElementById("enterMainBtn").addEventListener("click", () => {
+    if (!depsReady()) return;
+    if (!isInitialized) {
+      isInitialized = true;
+      initializeMainUI();
+      checkForUpdateAndNotify();
+    }
+    ui.hideDepsPage();
+  });
+
   document.getElementById("tabBtnSettings")?.addEventListener("click", () => {
     ui.switchSubpageTab("settings");
   });
@@ -242,6 +252,9 @@ async function openEagleFfmpegStore() {
   if (typeof eagle !== "undefined" && eagle.extraModule && eagle.extraModule.ffmpeg && typeof eagle.extraModule.ffmpeg.install === "function") {
     try {
       await eagle.extraModule.ffmpeg.install();
+      // 安装完成后重新检测依赖状态，同步底部按钮与门槛状态
+      loadDepsInfo();
+      refreshDepsGatingState();
       return;
     } catch (e) {}
   }
@@ -270,7 +283,7 @@ async function initializeBinaries() {
     return;
   }
 
-  // 缺少必要依赖：进入依赖管理页门槛模式，装齐后自动进入主界面
+  // 缺少必要依赖：进入依赖管理页门槛模式，装齐后按钮变为可点击，由用户手动进入主界面
   ui.showDepsPage({
     tab: "dependencies",
     gating: true,
@@ -278,6 +291,7 @@ async function initializeBinaries() {
     maxResolutionPref: getMaxResolutionPref(),
     maxFrameratePref: getMaxFrameratePref(),
   });
+  ui.updateEnterBtnState(false);
   ui.updateDepsBadge(true);
   loadDepsInfo();
 }
@@ -291,16 +305,14 @@ function depsReady() {
 
 /**
  * 依赖状态变化后调用：
- * - 已就绪且尚未初始化 → 退出门槛模式，进入主界面
- * - 未就绪 → 锁定依赖页（门槛模式）
+ * - 已就绪且尚未初始化 → 底部按钮变为可点击，等待用户手动进入主界面
+ * - 未就绪 → 锁定依赖页（门槛模式），按钮保持不可点击
  */
 function refreshDepsGatingState() {
   if (depsReady()) {
     if (!isInitialized) {
-      isInitialized = true;
-      ui.hideDepsPage();
-      initializeMainUI();
-      checkForUpdateAndNotify();
+      ui.updateEnterBtnState(true);
+      ui.updateDepsBadge(false);
     } else {
       getYtDlpUpdateInfo().then(({ hasUpdate }) => {
         ui.updateDepsBadge(hasUpdate);
@@ -311,6 +323,7 @@ function refreshDepsGatingState() {
   } else {
     isInitialized = false;
     ui.setDepsGating(true);
+    ui.updateEnterBtnState(false);
     ui.updateDepsBadge(true);
   }
 }
@@ -553,7 +566,7 @@ function loadDepsInfo(options = {}) {
  * 检查 yt-dlp 是否有更新并渲染对应卡片状态
  */
 function loadYtdlpUpdateStatus() {
-  ui.updateYtdlpCard("installed", { checkingUpdate: true });
+  ui.updateYtdlpCard("checking");
   const latestVersion = getLatestYtDlpVersion();
 
   getInstalledYtDlpVersion().then((installedVersion) => {

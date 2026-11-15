@@ -108,7 +108,6 @@ function setInputBarState(state, errorMessage = "") {
   if (state === "error") {
     addButton?.classList.add("error");
     if (tooltip && errorMessage) tooltip.textContent = errorMessage;
-    if (buttonImg) buttonImg.src = "assets/icon_error.svg";
   }
 }
 
@@ -150,22 +149,36 @@ function getPillInnerHtml(item) {
   }
 
   if (state === "downloading") {
-    // 导入 Eagle 阶段不可取消，隐藏取消按钮
-    const actions = item.importing ? "" : `
-      <div class="item-status-actions">
-        <button class="item-status-btn" data-action="cancel" data-id="${item.id}">${i18next.t("queue.cancel") || "Cancel"}</button>
-      </div>`;
     return `
       <div class="item-status-fill" style="width: ${item.progress}%"></div>
-      <span class="item-status-label">${i18next.t("queue.downloading") || "Downloading"}</span>${actions}
+      <span class="item-status-label">${i18next.t("queue.downloading") || "Downloading"}</span>
+    `;
+  }
+
+  if (state === "waiting") {
+    return `
+      <span class="item-status-label">${i18next.t("queue.waiting") || "Waiting"}</span>
     `;
   }
 
   // preparing (default)
   return `
     <span class="item-status-label">${i18next.t("queue.preparing") || "Preparing"}</span>
-    <div class="item-status-actions">
-      <button class="item-status-btn" data-action="cancel" data-id="${item.id}">${i18next.t("queue.cancel") || "Cancel"}</button>
+  `;
+}
+
+/**
+ * 获取条目右上角的操作按钮 HTML
+ * - 等待/准备/下载中：显示取消按钮（导入 Eagle 阶段隐藏）
+ * - 完成/出错：无右上角按钮
+ */
+function getItemActionsHtml(item) {
+  const cancellable = ["waiting", "preparing", "downloading"].includes(item.state);
+  if (!cancellable || item.importing) return "";
+
+  return `
+    <div class="item-corner-actions">
+      <button class="item-status-btn icon-only" data-action="cancel" data-id="${item.id}" aria-label="${i18next.t("queue.cancel") || "Cancel"}" title="${i18next.t("queue.cancel") || "Cancel"}"><img src="assets/figma-cancel.svg" alt="" /></button>
     </div>
   `;
 }
@@ -180,6 +193,7 @@ function createQueueItemEl(item) {
 
   el.innerHTML = `
     <div class="item-title">${escapeHtml(item.title)}</div>
+    ${getItemActionsHtml(item)}
     <div class="item-status-pill">
       ${getPillInnerHtml(item)}
     </div>
@@ -199,6 +213,20 @@ function updateQueueItem(id, data) {
 
   const titleEl = el.querySelector(".item-title");
   if (titleEl) titleEl.textContent = data.title;
+
+  // 更新右上角取消按钮（随状态/导入阶段切换显隐）
+  const existingActions = el.querySelector(".item-corner-actions");
+  const actionsHtml = getItemActionsHtml(data);
+  if (actionsHtml) {
+    if (existingActions) {
+      existingActions.outerHTML = actionsHtml;
+    } else {
+      const title = el.querySelector(".item-title");
+      title.insertAdjacentHTML("afterend", actionsHtml);
+    }
+  } else {
+    existingActions?.remove();
+  }
 
   const pill = el.querySelector(".item-status-pill");
   if (pill) {
@@ -355,15 +383,32 @@ function showDepsPage({ tab = "settings", gating = false, autoAddSourcePref = tr
 }
 
 /**
- * 切换依赖页的「门槛模式」：隐藏/显示返回按钮，显示/隐藏强制安装提示
+ * 切换依赖页的「门槛模式」：隐藏/显示返回按钮，显示/隐藏强制安装提示与底部「开始使用」按钮
  */
 function setDepsGating(gating) {
   document.querySelector(".subpage-content-card")?.classList.toggle("gating", gating);
   document.querySelector(".subpage-header")?.classList.toggle("hidden", gating);
   document.getElementById("depsNotice")?.classList.toggle("hidden", !gating);
+  document.querySelector(".subpage-footer")?.classList.toggle("hidden", !gating);
   if (gating) {
     switchSubpageTab("dependencies");
   }
+}
+
+/**
+ * 更新依赖页底部「进入下载页」按钮状态
+ * @param {boolean} ready - 依赖是否已就绪（yt-dlp + ffmpeg 均已安装）
+ */
+function updateEnterBtnState(ready) {
+  const btn = document.getElementById("enterMainBtn");
+  const label = document.getElementById("enterMainBtnLabel");
+  const tooltip = btn?.querySelector(".enter-tooltip");
+  if (!btn) return;
+
+  if (label) label.textContent = i18next.t("deps.start");
+  if (tooltip) tooltip.textContent = ready ? "" : i18next.t("deps.installBothRequired");
+
+  btn.classList.toggle("disabled", !ready);
 }
 
 /**
@@ -377,7 +422,7 @@ function hideDepsPage() {
 
 /**
  * 更新 yt-dlp 卡片状态
- * state: 'checking' | 'latest' | 'outdated' | 'missing' | 'busy' | 'done' | 'installed' | 'error'
+ * state: 'checking' | 'latest' | 'outdated' | 'missing' | 'busy' | 'done' | 'error'
  * data: { version, installedVersion, latestVersion, statusText, percent, message, retryAction }
  */
 function updateYtdlpCard(state, data = {}) {
@@ -390,24 +435,9 @@ function updateYtdlpCard(state, data = {}) {
 
   switch (state) {
     case "checking":
-      statusEl.classList.add("checking");
+      statusEl.classList.add("version");
       statusEl.textContent = i18next.t("deps.checking");
       if (detailEl) detailEl.textContent = "";
-      if (actionsEl) actionsEl.innerHTML = "";
-      break;
-
-    case "installed": {
-      statusEl.classList.add("ok");
-      statusEl.textContent = i18next.t("deps.installed");
-      if (detailEl) {
-        const versionPart = data.version
-          ? i18next.t("deps.versionInstalled", { version: data.version })
-          : "";
-        const checkingPart = data.checkingUpdate
-          ? i18next.t("deps.checkingUpdate")
-          : "";
-        detailEl.textContent = [versionPart, checkingPart].filter(Boolean).join("  ·  ");
-      }
       if (actionsEl) {
         actionsEl.innerHTML = `
           <button class="dep-btn" data-ytdlp-action="reinstall">${i18next.t("deps.reinstall")}</button>
@@ -415,12 +445,11 @@ function updateYtdlpCard(state, data = {}) {
         `;
       }
       break;
-    }
 
     case "latest":
-      statusEl.classList.add("ok");
-      statusEl.textContent = i18next.t("deps.latest");
-      if (detailEl) detailEl.textContent = i18next.t("deps.versionInstalled", { version: data.version });
+      statusEl.classList.add("version");
+      statusEl.textContent = data.version || i18next.t("deps.latest");
+      if (detailEl) detailEl.textContent = "";
       if (actionsEl) {
         actionsEl.innerHTML = `
           <button class="dep-btn" data-ytdlp-action="reinstall">${i18next.t("deps.reinstall")}</button>
@@ -476,9 +505,9 @@ function updateYtdlpCard(state, data = {}) {
     }
 
     case "done":
-      statusEl.classList.add("ok");
-      statusEl.textContent = data.statusText || i18next.t("deps.doneInstalled");
-      if (detailEl) detailEl.textContent = data.version ? i18next.t("deps.versionInstalled", { version: data.version }) : "";
+      statusEl.classList.add("version");
+      statusEl.textContent = data.version || data.statusText || i18next.t("deps.doneInstalled");
+      if (detailEl) detailEl.textContent = "";
       if (actionsEl) {
         actionsEl.innerHTML = `
           <button class="dep-btn" data-ytdlp-action="reinstall">${i18next.t("deps.reinstall")}</button>
@@ -549,6 +578,7 @@ module.exports = {
   showDepsPage,
   hideDepsPage,
   setDepsGating,
+  updateEnterBtnState,
   switchSubpageTab,
   updateDepsBadge,
   updateYtdlpCard,

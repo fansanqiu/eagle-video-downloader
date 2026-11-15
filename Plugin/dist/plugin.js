@@ -4142,8 +4142,6 @@ var require_ui = __commonJS({
         addButton == null ? void 0 : addButton.classList.add("error");
         if (tooltip && errorMessage)
           tooltip.textContent = errorMessage;
-        if (buttonImg)
-          buttonImg.src = "assets/icon_error.svg";
       }
     }
     function appendQueueItem(item) {
@@ -4173,19 +4171,27 @@ var require_ui = __commonJS({
     `;
       }
       if (state === "downloading") {
-        const actions = item.importing ? "" : `
-      <div class="item-status-actions">
-        <button class="item-status-btn" data-action="cancel" data-id="${item.id}">${i18next.t("queue.cancel") || "Cancel"}</button>
-      </div>`;
         return `
       <div class="item-status-fill" style="width: ${item.progress}%"></div>
-      <span class="item-status-label">${i18next.t("queue.downloading") || "Downloading"}</span>${actions}
+      <span class="item-status-label">${i18next.t("queue.downloading") || "Downloading"}</span>
+    `;
+      }
+      if (state === "waiting") {
+        return `
+      <span class="item-status-label">${i18next.t("queue.waiting") || "Waiting"}</span>
     `;
       }
       return `
     <span class="item-status-label">${i18next.t("queue.preparing") || "Preparing"}</span>
-    <div class="item-status-actions">
-      <button class="item-status-btn" data-action="cancel" data-id="${item.id}">${i18next.t("queue.cancel") || "Cancel"}</button>
+  `;
+    }
+    function getItemActionsHtml(item) {
+      const cancellable = ["waiting", "preparing", "downloading"].includes(item.state);
+      if (!cancellable || item.importing)
+        return "";
+      return `
+    <div class="item-corner-actions">
+      <button class="item-status-btn icon-only" data-action="cancel" data-id="${item.id}" aria-label="${i18next.t("queue.cancel") || "Cancel"}" title="${i18next.t("queue.cancel") || "Cancel"}"><img src="assets/figma-cancel.svg" alt="" /></button>
     </div>
   `;
     }
@@ -4195,6 +4201,7 @@ var require_ui = __commonJS({
       el.dataset.id = item.id;
       el.innerHTML = `
     <div class="item-title">${escapeHtml(item.title)}</div>
+    ${getItemActionsHtml(item)}
     <div class="item-status-pill">
       ${getPillInnerHtml(item)}
     </div>
@@ -4209,6 +4216,18 @@ var require_ui = __commonJS({
       const titleEl = el.querySelector(".item-title");
       if (titleEl)
         titleEl.textContent = data.title;
+      const existingActions = el.querySelector(".item-corner-actions");
+      const actionsHtml = getItemActionsHtml(data);
+      if (actionsHtml) {
+        if (existingActions) {
+          existingActions.outerHTML = actionsHtml;
+        } else {
+          const title = el.querySelector(".item-title");
+          title.insertAdjacentHTML("afterend", actionsHtml);
+        }
+      } else {
+        existingActions == null ? void 0 : existingActions.remove();
+      }
       const pill = el.querySelector(".item-status-pill");
       if (pill) {
         pill.innerHTML = getPillInnerHtml(data);
@@ -4329,13 +4348,26 @@ var require_ui = __commonJS({
       setDepsGating(gating);
     }
     function setDepsGating(gating) {
-      var _a, _b, _c;
+      var _a, _b, _c, _d;
       (_a = document.querySelector(".subpage-content-card")) == null ? void 0 : _a.classList.toggle("gating", gating);
       (_b = document.querySelector(".subpage-header")) == null ? void 0 : _b.classList.toggle("hidden", gating);
       (_c = document.getElementById("depsNotice")) == null ? void 0 : _c.classList.toggle("hidden", !gating);
+      (_d = document.querySelector(".subpage-footer")) == null ? void 0 : _d.classList.toggle("hidden", !gating);
       if (gating) {
         switchSubpageTab("dependencies");
       }
+    }
+    function updateEnterBtnState(ready) {
+      const btn = document.getElementById("enterMainBtn");
+      const label = document.getElementById("enterMainBtnLabel");
+      const tooltip = btn == null ? void 0 : btn.querySelector(".enter-tooltip");
+      if (!btn)
+        return;
+      if (label)
+        label.textContent = i18next.t("deps.start");
+      if (tooltip)
+        tooltip.textContent = ready ? "" : i18next.t("deps.installBothRequired");
+      btn.classList.toggle("disabled", !ready);
     }
     function hideDepsPage() {
       var _a, _b;
@@ -4351,21 +4383,10 @@ var require_ui = __commonJS({
       progressWrap == null ? void 0 : progressWrap.classList.add("hidden");
       switch (state) {
         case "checking":
-          statusEl.classList.add("checking");
+          statusEl.classList.add("version");
           statusEl.textContent = i18next.t("deps.checking");
           if (detailEl)
             detailEl.textContent = "";
-          if (actionsEl)
-            actionsEl.innerHTML = "";
-          break;
-        case "installed": {
-          statusEl.classList.add("ok");
-          statusEl.textContent = i18next.t("deps.installed");
-          if (detailEl) {
-            const versionPart = data.version ? i18next.t("deps.versionInstalled", { version: data.version }) : "";
-            const checkingPart = data.checkingUpdate ? i18next.t("deps.checkingUpdate") : "";
-            detailEl.textContent = [versionPart, checkingPart].filter(Boolean).join("  \xB7  ");
-          }
           if (actionsEl) {
             actionsEl.innerHTML = `
           <button class="dep-btn" data-ytdlp-action="reinstall">${i18next.t("deps.reinstall")}</button>
@@ -4373,12 +4394,11 @@ var require_ui = __commonJS({
         `;
           }
           break;
-        }
         case "latest":
-          statusEl.classList.add("ok");
-          statusEl.textContent = i18next.t("deps.latest");
+          statusEl.classList.add("version");
+          statusEl.textContent = data.version || i18next.t("deps.latest");
           if (detailEl)
-            detailEl.textContent = i18next.t("deps.versionInstalled", { version: data.version });
+            detailEl.textContent = "";
           if (actionsEl) {
             actionsEl.innerHTML = `
           <button class="dep-btn" data-ytdlp-action="reinstall">${i18next.t("deps.reinstall")}</button>
@@ -4435,10 +4455,10 @@ var require_ui = __commonJS({
           break;
         }
         case "done":
-          statusEl.classList.add("ok");
-          statusEl.textContent = data.statusText || i18next.t("deps.doneInstalled");
+          statusEl.classList.add("version");
+          statusEl.textContent = data.version || data.statusText || i18next.t("deps.doneInstalled");
           if (detailEl)
-            detailEl.textContent = data.version ? i18next.t("deps.versionInstalled", { version: data.version }) : "";
+            detailEl.textContent = "";
           if (actionsEl) {
             actionsEl.innerHTML = `
           <button class="dep-btn" data-ytdlp-action="reinstall">${i18next.t("deps.reinstall")}</button>
@@ -4499,6 +4519,7 @@ var require_ui = __commonJS({
       showDepsPage,
       hideDepsPage,
       setDepsGating,
+      updateEnterBtnState,
       switchSubpageTab,
       updateDepsBadge,
       updateYtdlpCard,
@@ -4517,7 +4538,7 @@ var require_en = __commonJS({
         }
       },
       ui: {
-        appTitle: "Video Downloader",
+        appTitle: "Video Download",
         inputPlaceholder: "Paste any video URL...",
         dribbbleConfirm: "Send this Dribbble shot URL to the third-party Jina Reader service (https://r.jina.ai/) to extract media links?\n\n{{url}}\n\nConfirm to continue, or cancel to keep the URL in the input field. Dribbble extraction depends on this service.",
         downloadBtn: "Download",
@@ -4539,7 +4560,7 @@ var require_en = __commonJS({
         completed: "Completed",
         error: "Download failed",
         retry: "Retry",
-        copyUrl: "Copy URL",
+        copyUrl: "Copy Link",
         copyError: "Copy Error",
         copied: "Copied!",
         done: "Finished",
@@ -4590,30 +4611,25 @@ var require_en = __commonJS({
         done: "\u2713 Updated to latest version"
       },
       deps: {
-        title: "Settings & Dependencies",
         tabSettings: "Settings",
         tabDependencies: "Dependencies",
-        sectionPreferences: "Preferences",
-        sectionEngines: "Core Engines",
         autoAddSourceLabel: "Auto-set Eagle Data Source",
         autoAddSourceHint: "When enabled, original web URLs are automatically saved to Eagle items",
-        maxResolutionLabel: "Resolution Preference",
-        maxResolutionHint: "Attempts to match your setting; fallback formats may exceed the selected resolution.",
-        maxFramerateLabel: "Frame Rate Preference",
-        maxFramerateHint: "Attempts to match your setting; fallback formats may exceed the selected frame rate.",
+        maxResolutionLabel: "Max Resolution",
+        maxResolutionHint: "Limit the maximum video resolution. If not available, automatically falls back to the highest available resolution.",
+        maxFramerateLabel: "Max Frame Rate",
+        maxFramerateHint: "Limit the maximum frame rate. If not available, automatically falls back to the highest available frame rate.",
         resAuto: "Auto (Best)",
         fpsAuto: "Auto (Best)",
-        setupRequired: "These components are required for first-time use. The main view will open automatically once setup is complete.",
-        back: "Back",
-        ytdlpDesc: "Video extraction & download engine",
-        ffmpegDesc: "Video merging & transcoding engine",
-        ffmpegManaged: "Managed by Eagle, no action needed",
+        setupRequired: 'First-time users need to install the following components. Click "Start" once setup is complete.',
+        start: "Start",
+        installBothRequired: "Please install both dependencies",
+        ytdlpDesc: "Video Parsing and Downloading Engine.",
+        ffmpegDesc: "Video Merge and Transcoding Engine, Managed by Eagle, no manual operation required.",
+        ffmpegManaged: "",
         ffmpegNotFoundHint: "Eagle built-in FFmpeg plugin not found. Please click the button below to install it.",
-        ffmpegUnsupported: "Eagle official FFmpeg plugin is required for audio/video merging",
         installFfmpegDep: "Install FFmpeg Dependency",
         checking: "Checking...",
-        installed: "Installed",
-        checkingUpdate: "Checking for updates...",
         latest: "Up to date",
         outdated: "Update",
         missing: "Not installed",
@@ -4631,7 +4647,6 @@ var require_en = __commonJS({
         uninstall: "Uninstall",
         retry: "Retry",
         downloadFailed: "Download failed",
-        versionInstalled: "Version: {{version}}",
         versionUpdate: "{{from}} \u2192 {{to}}",
         progressText: "Downloading... {{percent}}%"
       }
@@ -4649,7 +4664,7 @@ var require_zh_CN = __commonJS({
         }
       },
       ui: {
-        appTitle: "\u89C6\u9891\u4E0B\u8F7D\u5668",
+        appTitle: "\u89C6\u9891\u4E0B\u8F7D",
         inputPlaceholder: "\u7C98\u8D34\u4EFB\u610F\u89C6\u9891\u94FE\u63A5...",
         dribbbleConfirm: "\u662F\u5426\u5C06\u4EE5\u4E0B Dribbble \u4F5C\u54C1\u7F51\u5740\u53D1\u9001\u81F3\u7B2C\u4E09\u65B9 Jina Reader \u670D\u52A1\uFF08https://r.jina.ai/\uFF09\uFF0C\u7528\u4E8E\u63D0\u53D6\u5A92\u4F53\u94FE\u63A5\uFF1F\n\n{{url}}\n\n\u786E\u8BA4\u540E\u7EE7\u7EED\u4E0B\u8F7D\uFF1B\u53D6\u6D88\u540E\u7F51\u5740\u4FDD\u7559\u5728\u8F93\u5165\u6846\u4E2D\u3002Dribbble \u89E3\u6790\u4F9D\u8D56\u8BE5\u670D\u52A1\u3002",
         downloadBtn: "\u4E0B\u8F7D",
@@ -4722,30 +4737,25 @@ var require_zh_CN = __commonJS({
         done: "\u2713 \u5DF2\u66F4\u65B0\u81F3\u6700\u65B0\u7248"
       },
       deps: {
-        title: "\u8BBE\u7F6E\u4E0E\u4F9D\u8D56\u7BA1\u7406",
         tabSettings: "\u504F\u597D\u8BBE\u7F6E",
         tabDependencies: "\u4F9D\u8D56\u7BA1\u7406",
-        sectionPreferences: "\u504F\u597D\u8BBE\u7F6E",
-        sectionEngines: "\u6838\u5FC3\u5F15\u64CE\u4F9D\u8D56",
         autoAddSourceLabel: "\u81EA\u52A8\u8BBE\u7F6E Eagle \u6570\u636E\u6765\u6E90",
         autoAddSourceHint: "\u5F00\u542F\u540E\uFF0C\u4E0B\u8F7D\u89C6\u9891\u65F6\u4F1A\u81EA\u52A8\u5728 Eagle \u4E2D\u8BB0\u5F55\u539F\u59CB\u7F51\u9875 URL",
-        maxResolutionLabel: "\u5206\u8FA8\u7387\u504F\u597D",
-        maxResolutionHint: "\u4F18\u5148\u5C1D\u8BD5\u5339\u914D\u8BBE\u7F6E\uFF1B\u540E\u5907\u683C\u5F0F\u7684\u5206\u8FA8\u7387\u53EF\u80FD\u8D85\u8FC7\u6240\u9009\u503C\u3002",
-        maxFramerateLabel: "\u5E27\u7387\u504F\u597D",
-        maxFramerateHint: "\u4F18\u5148\u5C1D\u8BD5\u5339\u914D\u8BBE\u7F6E\uFF1B\u540E\u5907\u683C\u5F0F\u7684\u5E27\u7387\u53EF\u80FD\u8D85\u8FC7\u6240\u9009\u503C\u3002",
+        maxResolutionLabel: "\u6700\u5927\u5206\u8FA8\u7387",
+        maxResolutionHint: "\u9650\u5236\u89C6\u9891\u6700\u9AD8\u5206\u8FA8\u7387\uFF1B\u82E5\u65E0\u53EF\u7528\u683C\u5F0F\uFF0C\u5C06\u81EA\u52A8\u56DE\u9000\u5230\u53EF\u7528\u7684\u6700\u9AD8\u5206\u8FA8\u7387\u3002",
+        maxFramerateLabel: "\u6700\u5927\u5E27\u7387",
+        maxFramerateHint: "\u9650\u5236\u89C6\u9891\u6700\u9AD8\u5E27\u7387\uFF1B\u82E5\u65E0\u53EF\u7528\u683C\u5F0F\uFF0C\u5C06\u81EA\u52A8\u56DE\u9000\u5230\u53EF\u7528\u7684\u6700\u9AD8\u5E27\u7387\u3002",
         resAuto: "Auto (\u6700\u9AD8\u753B\u8D28)",
         fpsAuto: "Auto (\u6700\u9AD8\u5E27\u7387)",
-        setupRequired: "\u9996\u6B21\u4F7F\u7528\u9700\u8981\u5148\u5B89\u88C5\u4EE5\u4E0B\u7EC4\u4EF6\uFF0C\u5B89\u88C5\u5B8C\u6210\u540E\u5C06\u81EA\u52A8\u8FDB\u5165\u4E3B\u754C\u9762",
-        back: "\u8FD4\u56DE",
-        ytdlpDesc: "\u89C6\u9891\u89E3\u6790\u4E0E\u4E0B\u8F7D\u5F15\u64CE",
-        ffmpegDesc: "\u89C6\u9891\u5408\u5E76\u4E0E\u8F6C\u7801\u5F15\u64CE",
-        ffmpegManaged: "\u7531 Eagle \u7BA1\u7406\uFF0C\u65E0\u9700\u624B\u52A8\u64CD\u4F5C",
+        setupRequired: "\u9996\u6B21\u4F7F\u7528\u9700\u8981\u5148\u5B89\u88C5\u4EE5\u4E0B\u7EC4\u4EF6\uFF0C\u5B89\u88C5\u5B8C\u6210\u540E\u70B9\u51FB\u300C\u5F00\u59CB\u4F7F\u7528\u300D\u8FDB\u5165\u4E0B\u8F7D\u9875",
+        start: "\u5F00\u59CB\u4F7F\u7528",
+        installBothRequired: "\u9700\u5B8C\u6574\u5B89\u88C52\u9879\u4F9D\u8D56",
+        ytdlpDesc: "\u89C6\u9891\u89E3\u6790\u4E0E\u4E0B\u8F7D\u5F15\u64CE\u3002",
+        ffmpegDesc: "\u89C6\u9891\u5408\u5E76\u4E0E\u8F6C\u7801\u5F15\u64CE\uFF0C\u7531 Eagle \u7BA1\u7406\uFF0C\u65E0\u9700\u624B\u52A8\u64CD\u4F5C\u3002",
+        ffmpegManaged: "",
         ffmpegNotFoundHint: "\u672A\u68C0\u6D4B\u5230 Eagle \u5185\u7F6E FFmpeg \u63D2\u4EF6\uFF0C\u8BF7\u70B9\u51FB\u4E0B\u65B9\u6309\u94AE\u5B89\u88C5",
-        ffmpegUnsupported: "\u9700\u5B89\u88C5 Eagle \u5B98\u65B9 FFmpeg \u63D2\u4EF6\u4EE5\u652F\u6301\u97F3\u89C6\u9891\u5408\u5E76",
         installFfmpegDep: "\u5B89\u88C5 FFmpeg \u4F9D\u8D56",
         checking: "\u68C0\u67E5\u4E2D...",
-        installed: "\u5DF2\u5B89\u88C5",
-        checkingUpdate: "\u68C0\u67E5\u66F4\u65B0\u4E2D...",
         latest: "\u5DF2\u662F\u6700\u65B0\u7248",
         outdated: "\u6709\u65B0\u7248\u672C",
         missing: "\u672A\u5B89\u88C5",
@@ -4763,7 +4773,6 @@ var require_zh_CN = __commonJS({
         uninstall: "\u5378\u8F7D",
         retry: "\u91CD\u8BD5",
         downloadFailed: "\u4E0B\u8F7D\u5931\u8D25",
-        versionInstalled: "\u7248\u672C\uFF1A{{version}}",
         versionUpdate: "{{from}} \u2192 {{to}}",
         progressText: "\u6B63\u5728\u4E0B\u8F7D... {{percent}}%"
       }
@@ -4884,6 +4893,16 @@ function setupEventListeners() {
   });
   document.getElementById("depsEntryBtn").addEventListener("click", openDepsPage);
   document.getElementById("depsBackBtn").addEventListener("click", closeDepsPage);
+  document.getElementById("enterMainBtn").addEventListener("click", () => {
+    if (!depsReady())
+      return;
+    if (!isInitialized) {
+      isInitialized = true;
+      initializeMainUI();
+      checkForUpdateAndNotify();
+    }
+    ui.hideDepsPage();
+  });
   (_a = document.getElementById("tabBtnSettings")) == null ? void 0 : _a.addEventListener("click", () => {
     ui.switchSubpageTab("settings");
   });
@@ -4945,6 +4964,8 @@ async function openEagleFfmpegStore() {
   if (typeof eagle !== "undefined" && eagle.extraModule && eagle.extraModule.ffmpeg && typeof eagle.extraModule.ffmpeg.install === "function") {
     try {
       await eagle.extraModule.ffmpeg.install();
+      loadDepsInfo();
+      refreshDepsGatingState();
       return;
     } catch (e) {
     }
@@ -4972,6 +4993,7 @@ async function initializeBinaries() {
     maxResolutionPref: getMaxResolutionPref(),
     maxFrameratePref: getMaxFrameratePref()
   });
+  ui.updateEnterBtnState(false);
   ui.updateDepsBadge(true);
   loadDepsInfo();
 }
@@ -4981,10 +5003,8 @@ function depsReady() {
 function refreshDepsGatingState() {
   if (depsReady()) {
     if (!isInitialized) {
-      isInitialized = true;
-      ui.hideDepsPage();
-      initializeMainUI();
-      checkForUpdateAndNotify();
+      ui.updateEnterBtnState(true);
+      ui.updateDepsBadge(false);
     } else {
       getYtDlpUpdateInfo().then(({ hasUpdate }) => {
         ui.updateDepsBadge(hasUpdate);
@@ -4995,6 +5015,7 @@ function refreshDepsGatingState() {
   } else {
     isInitialized = false;
     ui.setDepsGating(true);
+    ui.updateEnterBtnState(false);
     ui.updateDepsBadge(true);
   }
 }
@@ -5181,7 +5202,7 @@ function loadDepsInfo(options = {}) {
   }
 }
 function loadYtdlpUpdateStatus() {
-  ui.updateYtdlpCard("installed", { checkingUpdate: true });
+  ui.updateYtdlpCard("checking");
   const latestVersion = getLatestYtDlpVersion();
   getInstalledYtDlpVersion().then((installedVersion) => {
     if (!installedVersion) {
